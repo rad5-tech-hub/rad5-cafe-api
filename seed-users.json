@@ -1,0 +1,26 @@
+[
+  {
+    "uid": "RAD5000001",
+    "email": "john@rad5.com",
+    "displayName": "John Doe",
+    "phoneNumber": "+2348012345678",
+    "password": "Password123",
+    "customClaims": { "role": "customer" }
+  },
+  {
+    "uid": "RAD5000002",
+    "email": "jane@rad5.com",
+    "displayName": "Jane Smith",
+    "phoneNumber": "+2348012345679",
+    "password": "Password123",
+    "customClaims": { "role": "customer" }
+  },
+  {
+    "uid": "ADMIN000001",
+    "email": "admin@rad5cafe.com",
+    "displayName": "Café Admin",
+    "phoneNumber": "+2348012345000",
+    "password": "Admin@12345",
+    "customClaims": { "role": "admin" }
+  }
+]
