@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.env
+.env.*
+*.tgz
+coverage
+logs
+*.log
+.code
+.cache
+.eslintcache
+*.tsbuildinfo
+.idea
+.DS_Store
+firebase-service-account.json
+rd-xx.json
