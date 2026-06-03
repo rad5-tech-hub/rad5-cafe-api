@@ -4,6 +4,7 @@ import { generateReceiptNumber, getNextId } from '../utils/id-generator';
 import { productService } from './products';
 import { walletService } from './wallet';
 import { verifyPin } from '../utils/pin-hash';
+import { expoPushService } from './expo-push';
 
 const WALLETS_COLLECTION = 'wallets';
 const USERS_COLLECTION = 'users';
@@ -140,6 +141,13 @@ export class OrderService {
         updatedAt: Timestamp.now(),
       });
     });
+
+    void expoPushService.sendToUser(
+      userId,
+      'Purchase Completed',
+      `Your order ${receiptNumber} for ₦${subtotal.toLocaleString()} has been completed`,
+      { type: 'purchase_completed', receiptNumber, amount: subtotal, orderId: orderRef.id },
+    );
 
     const order = {
       id: orderRef.id,

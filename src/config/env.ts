@@ -46,4 +46,8 @@ export const env = {
   },
 
   currency: process.env.CURRENCY || 'NGN',
+
+  expo: {
+    accessToken: process.env.EXPO_ACCESS_TOKEN || '',
+  },
 };

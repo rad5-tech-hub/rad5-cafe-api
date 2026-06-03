@@ -1,6 +1,7 @@
 import { db, Timestamp, FieldValue } from '../config/firebase';
 import { User, Wallet } from '../types';
 import { generateReference } from '../utils/helpers';
+import { expoPushService } from './expo-push';
 
 const TRANSFERS_COLLECTION = 'transfers';
 const TRANSACTIONS_COLLECTION = 'transactions';
@@ -106,6 +107,20 @@ export class TransferService {
         updatedAt: Timestamp.now(),
       });
     });
+
+    void expoPushService.sendToUser(
+      senderUserId,
+      'Transfer Sent',
+      `You sent ₦${amount.toLocaleString()} to ${recipientWalletId}`,
+      { type: 'transfer_sent', amount, recipientWalletId },
+    );
+
+    void expoPushService.sendToUser(
+      recipientWallet.userId,
+      'Transfer Received',
+      `You received ₦${amount.toLocaleString()} from ${senderWalletId}`,
+      { type: 'transfer_received', amount, senderWalletId },
+    );
 
     return { transferId: transferRef.id, senderBalance: senderWallet.balance - amount };
   }

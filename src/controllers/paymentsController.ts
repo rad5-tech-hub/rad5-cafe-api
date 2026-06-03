@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Request, Response } from 'express';
 import { db, Timestamp, FieldValue } from '../config/firebase';
 import { env } from '../config/env';
+import { expoPushService } from '../services/expo-push';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 const PENDING_PURCHASES = 'pendingTokenPurchases';
@@ -145,6 +146,15 @@ async function finalizePaystackPayment(
 
       return { alreadyApplied: false, transactionId: txnDocRef.id };
     });
+
+    if (!txnResult.alreadyApplied) {
+      void expoPushService.sendToUser(
+        userId,
+        'Wallet Funded',
+        `Your wallet has been credited with ₦${amountMain.toLocaleString()}`,
+        { type: 'wallet_funded', amount: amountMain },
+      );
+    }
 
     return {
       success: true,
