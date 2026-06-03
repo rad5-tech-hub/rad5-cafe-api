@@ -42,8 +42,8 @@ export const env = {
   app: {
     name: process.env.APP_NAME || 'RAD5 Café',
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    baseUrl: process.env.APP_BASE_URL || 'http://localhost:5000', // #updates
+    baseUrl: process.env.APP_BASE_URL || 'http://localhost:5000',
   },
 
-  currency: process.env.CURRENCY || 'NGN', // #updates
+  currency: process.env.CURRENCY || 'NGN',
 };

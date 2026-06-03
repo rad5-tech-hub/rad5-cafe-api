@@ -174,22 +174,20 @@ All authenticated endpoints require a **Firebase ID token** sent in the `Authori
 
 ## Payment Providers
 
-<!-- #updates — Rewritten: Paystack is now a standalone payments controller with webhook/callback/verify idempotency -->
+### Paystack (Wallet Funding) `/payments`
 
-### Paystack (Token Purchase) `/payments`
-
-Token purchases use a robust zero-SDK Paystack integration with HMAC-SHA512 webhook verification and idempotent processing via an `appliedPayments` ledger.
+Wallet funding uses a robust zero-SDK Paystack integration with HMAC-SHA512 webhook verification and idempotent processing via an `appliedPayments` ledger. Users fund their wallet with Naira, and the balance is used to place orders.
 
 | Method | Endpoint | Auth | Body / Query | Response |
 |--------|----------|------|-------------|----------|
-| `POST` | `/payments/initiate` | Yes | `{ plan }` — `"small"`, `"medium"`, or `"large"` | `{ authorizationUrl, reference, amount, tokens, plan }` |
+| `POST` | `/payments/initiate` | Yes | `{ amount }` — amount in Naira (minimum 100) | `{ authorizationUrl, reference, amount, displayAmount }` |
 | `POST` | `/payments/webhook` | No (HMAC) | Raw JSON body from Paystack | `{ message, alreadyApplied, transactionId }` |
 | `GET` | `/payments/callback` | No | `?reference=REF` (browser redirect) | Redirects to success/failure URL |
-| `POST` | `/payments/verify` | Yes | `{ reference }` | `{ alreadyApplied, transactionId, amount, tokens }` |
+| `POST` | `/payments/verify` | Yes | `{ reference }` | `{ alreadyApplied, transactionId, amount }` |
 
-**Flow (#updates):**
-1. **Client** calls `POST /api/payments/initiate` with a plan (`small` | `medium` | `large`)
-2. Backend creates a `PendingTokenPurchase` in the `pendingTokenPurchases` Firestore collection
+**Flow:**
+1. **Client** calls `POST /api/payments/initiate` with an `amount` in Naira (e.g. `{ "amount": 500 }`)
+2. Backend creates a pending funding record in the `pendingTokenPurchases` Firestore collection
 3. Backend calls Paystack `POST /transaction/initialize` to get a hosted `authorizationUrl`
 4. **User pays** in the Paystack WebView/browser
 5. Confirmation arrives via three converging paths that all call the **single `finalizePaystackPayment()` function**:
@@ -205,20 +203,12 @@ Token purchases use a robust zero-SDK Paystack integration with HMAC-SHA512 webh
    - Then runs an **atomic Firestore transaction** that:
      - Checks the `appliedPayments/ledger` document for idempotency (map of `reference → timestamp`)
      - Credits the user's wallet balance
-     - Creates a completed `Transaction` record
-     - Marks the `PendingTokenPurchase` as `completed`
+     - Creates a completed `Transaction` record (type: `funding`, method: `paystack`)
+     - Marks the pending funding record as `completed`
      - Records the reference in the ledger
    - **Race condition proof**: simultaneous webhook + callback won't double-credit
 
-**Plan Pricing (#updates):**
-
-| Plan | Tokens | Price (NGN) | Price (Kobo) |
-|------|--------|-------------|-------------|
-| Small | 500 | ₦500 | 50,000 |
-| Medium | 2,000 | ₦2,000 | 200,000 |
-| Large | 5,000 | ₦5,000 | 500,000 |
-
-**Environment Variables (#updates):**
+**Environment Variables:**
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -226,8 +216,8 @@ Token purchases use a robust zero-SDK Paystack integration with HMAC-SHA512 webh
 | `APP_BASE_URL` | Yes | `http://localhost:5000` | Backend base URL for callback |
 | `CURRENCY` | No | `NGN` | ISO 4217 currency code |
 
-**Legacy Wallet Funding (#updates):**
-The original `POST /wallet/fund/initialize` and `POST /wallet/fund/verify` endpoints remain available for direct wallet top-ups via Paystack and Flutterwave. See the Wallet section above for details.
+**Legacy Wallet Funding:**
+The `POST /wallet/fund/initialize` and `POST /wallet/fund/verify` endpoints remain available for direct wallet top-ups via Paystack and Flutterwave. See the Wallet section above for details.
 
 ---
 

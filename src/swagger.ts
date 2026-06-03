@@ -297,12 +297,12 @@ const options: swaggerJsdoc.Options = {
             error: { type: 'string' },
           },
         },
-        // #updates — Paystack payment schemas
+        // Paystack wallet funding schemas
         PaymentInitRequest: {
           type: 'object',
-          required: ['plan'],
+          required: ['amount'],
           properties: {
-            plan: { type: 'string', enum: ['small', 'medium', 'large'], description: 'Token purchase plan' },
+            amount: { type: 'number', minimum: 100, description: 'Amount in Naira (minimum 100)', example: 500 },
           },
         },
         PaymentInitResponse: {
@@ -313,9 +313,6 @@ const options: swaggerJsdoc.Options = {
             accessCode: { type: 'string', description: 'Paystack access code' },
             amount: { type: 'number', description: 'Amount in smallest currency unit (kobo)' },
             displayAmount: { type: 'string', example: '500 NGN' },
-            tokens: { type: 'number', example: 500 },
-            plan: { type: 'string', enum: ['small', 'medium', 'large'] },
-            planLabel: { type: 'string', example: 'Small (500 tokens)' },
           },
         },
         PaymentVerifyRequest: {
@@ -332,7 +329,6 @@ const options: swaggerJsdoc.Options = {
             alreadyApplied: { type: 'boolean', description: 'True if payment was previously processed (idempotent)' },
             transactionId: { type: 'string' },
             amount: { type: 'number' },
-            tokens: { type: 'number' },
             walletCredited: { type: 'boolean', description: 'False if payment was already applied' },
           },
         },
@@ -352,7 +348,7 @@ const options: swaggerJsdoc.Options = {
       { name: 'Search', description: 'Product and category search' },
       { name: 'Images', description: 'Unsplash image search for products' },
       { name: 'Notifications', description: 'Inventory alerts and audit logs' },
-      { name: 'Payments', description: 'Paystack token purchase flow with webhooks — idempotent (#updates)' }, // #updates
+      { name: 'Payments', description: 'Paystack wallet funding flow with webhooks — idempotent' },
     ],
     paths: {
       '/health': {
@@ -375,12 +371,12 @@ const options: swaggerJsdoc.Options = {
         },
       },
 
-      // #updates — Paystack Token Purchase Payment Endpoints
+      // Paystack Wallet Funding Payment Endpoints
       '/payments/initiate': {
         post: {
           tags: ['Payments'],
-          summary: 'Initiate token purchase via Paystack',
-          description: 'Creates a PendingTokenPurchase and returns a Paystack hosted payment URL. The user completes payment in a WebView/browser, then the webhook/callback/verify paths confirm.',
+          summary: 'Initiate wallet funding via Paystack',
+          description: 'Creates a pending funding record and returns a Paystack hosted payment URL. The user completes payment in a WebView/browser, then the webhook/callback/verify paths confirm and credit their wallet balance.',
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,
@@ -392,7 +388,7 @@ const options: swaggerJsdoc.Options = {
           },
           responses: {
             200: { description: 'Payment initialized — redirect user to authorizationUrl', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
-            400: { description: 'Invalid plan or Paystack error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+            400: { description: 'Invalid amount or Paystack error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
           },
         },
       },
@@ -438,8 +434,8 @@ const options: swaggerJsdoc.Options = {
       '/payments/verify': {
         post: {
           tags: ['Payments'],
-          summary: 'Manual client-side payment verification',
-          description: 'Fallback for verifying completed payments. Calls the same idempotent finalizePaystackPayment() as webhook/callback. Safe to call multiple times.',
+          summary: 'Manual client-side funding verification',
+          description: 'Fallback for verifying completed wallet funding. Calls the same idempotent finalizePaystackPayment() as webhook/callback. Safe to call multiple times.',
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,

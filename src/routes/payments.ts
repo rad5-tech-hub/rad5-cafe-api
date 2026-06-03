@@ -9,16 +9,16 @@ import {
 
 const router = Router();
 
-// #updates — Token purchase initialization (authenticated)
+// Wallet funding via Paystack (authenticated)
 router.post('/initiate', authenticate, initiatePayment);
 
-// #updates — Paystack webhook (no auth, raw body for HMAC verification)
+// Paystack webhook (no auth, raw body for HMAC verification)
 router.post('/webhook', raw({ type: 'application/json' }), handleWebhook);
 
-// #updates — Paystack browser redirect callback (no auth)
+// Paystack browser redirect callback (no auth)
 router.get('/callback', handleCallback);
 
-// #updates — Manual client-side verify fallback (authenticated)
+// Manual client-side verify fallback (authenticated)
 router.post('/verify', authenticate, verifyPayment);
 
 export default router;

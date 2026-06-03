@@ -19,7 +19,7 @@ import imageRoutes from './routes/images';
 import notificationRoutes from './routes/notifications';
 import adminRoutes from './routes/admin';
 import searchRoutes from './routes/search';
-import paymentsRoutes from './routes/payments'; // #updates
+import paymentsRoutes from './routes/payments';
 import { errorHandler } from './middleware/error';
 
 const app = express();
@@ -58,7 +58,7 @@ app.use('/api/images', imageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/search', searchRoutes);
-app.use('/api/payments', paymentsRoutes); // #updates
+app.use('/api/payments', paymentsRoutes);
 
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',

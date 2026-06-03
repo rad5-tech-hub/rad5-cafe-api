@@ -10,12 +10,7 @@ const APPLIED_PAYMENTS_LEDGER = 'appliedPayments';
 const TRANSACTIONS = 'transactions';
 const WALLETS = 'wallets';
 
-// #updates — Plan definitions (token counts + amounts in kobo for Paystack)
-const PLANS: Record<string, { tokens: number; amountKobo: number; label: string }> = {
-  small:  { tokens: 500,  amountKobo: 50000,  label: 'Small (500 tokens)' },
-  medium: { tokens: 2000, amountKobo: 200000, label: 'Medium (2,000 tokens)' },
-  large:  { tokens: 5000, amountKobo: 500000, label: 'Large (5,000 tokens)' },
-};
+const MIN_AMOUNT_KOBOS = 10000; // minimum ₦100
 
 // =====================================================================
 // HMAC-SHA512 Paystack signature verification using node:crypto
@@ -47,7 +42,6 @@ async function finalizePaystackPayment(
   alreadyApplied: boolean;
   transactionId?: string;
   amount?: number;
-  tokens?: number;
   message?: string;
 }> {
   // ── Step 1: Verify with Paystack (outside Firestore transaction) ──────
@@ -96,7 +90,6 @@ async function finalizePaystackPayment(
   const walletId = purchaseData.walletId;
   const amountKobo = purchaseData.amount;
   const amountMain = amountKobo / 100;
-  const tokens = purchaseData.tokens;
 
   const walletSnapshot = await db.collection(WALLETS).where('userId', '==', userId).limit(1).get();
   if (walletSnapshot.empty) {
@@ -124,14 +117,13 @@ async function finalizePaystackPayment(
         amount: amountMain,
         fee: 0,
         reference,
-        description: `Token purchase via Paystack — ${tokens} tokens`,
+        description: `Wallet funding via Paystack — ${amountMain.toLocaleString()} ${purchaseData.currency || 'NGN'}`,
         status: 'completed' as const,
         paymentMethod: 'paystack' as const,
         metadata: {
           paystackReference: reference,
           paystackAmount: amountKobo,
           currency: purchaseData.currency,
-          tokens,
           verifiedAt: new Date().toISOString(),
         },
         createdAt: Timestamp.now(),
@@ -159,7 +151,6 @@ async function finalizePaystackPayment(
       alreadyApplied: txnResult.alreadyApplied,
       transactionId: txnResult.transactionId,
       amount: amountMain,
-      tokens,
     };
   } catch (error: any) {
     if (error?.code === 6) {
@@ -172,21 +163,31 @@ async function finalizePaystackPayment(
 
 // =====================================================================
 // HANDLER: POST /api/payments/initiate
-// Authenticated — creates PendingTokenPurchase, calls Paystack initialize
+// Authenticated — creates pending wallet funding, calls Paystack initialize
 // =====================================================================
 export async function initiatePayment(req: Request, res: Response): Promise<void> {
   try {
-    const { plan } = req.body;
+    const { amount } = req.body;
+    const amountNaira = Number(amount);
 
-    if (!plan || !PLANS[plan]) {
+    if (!amountNaira || isNaN(amountNaira) || amountNaira <= 0) {
       res.status(400).json({
         success: false,
-        message: `Invalid plan. Must be one of: ${Object.keys(PLANS).join(', ')}`,
+        message: 'Valid amount in Naira required (e.g. { "amount": 500 })',
       });
       return;
     }
 
-    const planDef = PLANS[plan];
+    const amountKobo = Math.round(amountNaira * 100);
+
+    if (amountKobo < MIN_AMOUNT_KOBOS) {
+      res.status(400).json({
+        success: false,
+        message: `Minimum funding amount is ${MIN_AMOUNT_KOBOS / 100} NGN`,
+      });
+      return;
+    }
+
     const reference = `RAD5-${uuidv4().replace(/-/g, '').substring(0, 16).toUpperCase()}`;
     const user = req.user!;
 
@@ -194,11 +195,8 @@ export async function initiatePayment(req: Request, res: Response): Promise<void
       userId: user.userId,
       walletId: user.walletId,
       reference,
-      amount: planDef.amountKobo,
+      amount: amountKobo,
       currency: env.currency,
-      tokens: planDef.tokens,
-      plan,
-      planLabel: planDef.label,
       metadata: {},
       status: 'pending',
       createdAt: Timestamp.now(),
@@ -207,15 +205,13 @@ export async function initiatePayment(req: Request, res: Response): Promise<void
 
     const paystackPayload = {
       email: user.email,
-      amount: planDef.amountKobo,
+      amount: amountKobo,
       currency: env.currency,
       reference,
       callback_url: `${env.app.baseUrl}/api/payments/callback?reference=${reference}`,
       metadata: {
         userId: user.userId,
-        plan,
-        tokens: planDef.tokens,
-        planLabel: planDef.label,
+        amount: amountNaira,
       },
     };
 
@@ -261,11 +257,8 @@ export async function initiatePayment(req: Request, res: Response): Promise<void
         authorizationUrl: result.data.authorization_url,
         reference,
         accessCode: result.data.access_code,
-        amount: planDef.amountKobo,
-        displayAmount: `${(planDef.amountKobo / 100).toLocaleString()} ${env.currency}`,
-        tokens: planDef.tokens,
-        plan,
-        planLabel: planDef.label,
+        amount: amountKobo,
+        displayAmount: `${amountNaira.toLocaleString()} ${env.currency}`,
       },
     });
   } catch (error: any) {
@@ -352,7 +345,6 @@ export async function handleCallback(req: Request, res: Response): Promise<void>
       reference,
       trxref: reference,
       status: 'success',
-      tokens: String(result.tokens || 0),
       amount: String(result.amount || 0),
     });
 
@@ -397,7 +389,6 @@ export async function verifyPayment(req: Request, res: Response): Promise<void> 
         alreadyApplied: result.alreadyApplied,
         transactionId: result.transactionId,
         amount: result.amount,
-        tokens: result.tokens,
         walletCredited: !result.alreadyApplied,
       },
     });
