@@ -297,6 +297,45 @@ const options: swaggerJsdoc.Options = {
             error: { type: 'string' },
           },
         },
+        // #updates — Paystack payment schemas
+        PaymentInitRequest: {
+          type: 'object',
+          required: ['plan'],
+          properties: {
+            plan: { type: 'string', enum: ['small', 'medium', 'large'], description: 'Token purchase plan' },
+          },
+        },
+        PaymentInitResponse: {
+          type: 'object',
+          properties: {
+            authorizationUrl: { type: 'string', description: 'Paystack hosted payment page URL' },
+            reference: { type: 'string', description: 'Unique payment reference' },
+            accessCode: { type: 'string', description: 'Paystack access code' },
+            amount: { type: 'number', description: 'Amount in smallest currency unit (kobo)' },
+            displayAmount: { type: 'string', example: '500 NGN' },
+            tokens: { type: 'number', example: 500 },
+            plan: { type: 'string', enum: ['small', 'medium', 'large'] },
+            planLabel: { type: 'string', example: 'Small (500 tokens)' },
+          },
+        },
+        PaymentVerifyRequest: {
+          type: 'object',
+          required: ['reference'],
+          properties: {
+            reference: { type: 'string', description: 'Payment reference from initialization' },
+          },
+        },
+        PaymentVerifyResult: {
+          type: 'object',
+          properties: {
+            reference: { type: 'string' },
+            alreadyApplied: { type: 'boolean', description: 'True if payment was previously processed (idempotent)' },
+            transactionId: { type: 'string' },
+            amount: { type: 'number' },
+            tokens: { type: 'number' },
+            walletCredited: { type: 'boolean', description: 'False if payment was already applied' },
+          },
+        },
       },
     },
     tags: [
@@ -313,6 +352,7 @@ const options: swaggerJsdoc.Options = {
       { name: 'Search', description: 'Product and category search' },
       { name: 'Images', description: 'Unsplash image search for products' },
       { name: 'Notifications', description: 'Inventory alerts and audit logs' },
+      { name: 'Payments', description: 'Paystack token purchase flow with webhooks — idempotent (#updates)' }, // #updates
     ],
     paths: {
       '/health': {
@@ -332,9 +372,90 @@ const options: swaggerJsdoc.Options = {
                       message: { type: 'string', example: 'RAD5 Café API is running' },
                       timestamp: { type: 'string', format: 'date-time' },
                       environment: { type: 'string', example: 'development' },
-                    },
+        },
+      },
+
+      // #updates — Paystack Token Purchase Payment Endpoints
+      '/payments/initiate': {
+        post: {
+          tags: ['Payments'],
+          summary: 'Initiate token purchase via Paystack',
+          description: 'Creates a PendingTokenPurchase and returns a Paystack hosted payment URL. The user completes payment in a WebView/browser, then the webhook/callback/verify paths confirm.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PaymentInitRequest' },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Payment initialized — redirect user to authorizationUrl', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+            400: { description: 'Invalid plan or Paystack error', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
+        },
+      },
+      '/payments/webhook': {
+        post: {
+          tags: ['Payments'],
+          summary: 'Paystack webhook (HMAC-SHA512 verified)',
+          description: 'Receives charge.success events from Paystack. Signature is verified with node:crypto HMAC-SHA512. Idempotent — safe to receive duplicate events.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    event: { type: 'string', example: 'charge.success' },
+                    data: { type: 'object' },
                   },
                 },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Payment processed or acknowledged', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+            401: { description: 'Invalid or missing HMAC signature', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
+        },
+      },
+      '/payments/callback': {
+        get: {
+          tags: ['Payments'],
+          summary: 'Paystack browser redirect callback',
+          description: 'Paystack redirects the user here after payment. Server verifies with Paystack API, finalizes the payment, and redirects to the frontend success/failure URL.',
+          parameters: [
+            { name: 'reference', in: 'query', schema: { type: 'string' }, description: 'Payment reference' },
+            { name: 'trxref', in: 'query', schema: { type: 'string' }, description: 'Transaction reference (Paystack alias)' },
+          ],
+          responses: {
+            302: { description: 'Redirects to frontend wallet/funding/success or wallet/funding/failed' },
+          },
+        },
+      },
+      '/payments/verify': {
+        post: {
+          tags: ['Payments'],
+          summary: 'Manual client-side payment verification',
+          description: 'Fallback for verifying completed payments. Calls the same idempotent finalizePaystackPayment() as webhook/callback. Safe to call multiple times.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PaymentVerifyRequest' },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Payment verified and wallet credited', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+            400: { description: 'Payment not found or not successful on Paystack', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
+        },
+      },
+    },
               },
             },
           },

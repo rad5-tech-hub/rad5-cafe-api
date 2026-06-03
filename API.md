@@ -174,17 +174,60 @@ All authenticated endpoints require a **Firebase ID token** sent in the `Authori
 
 ## Payment Providers
 
-### Paystack
-- Initialize via `POST /wallet/fund/initialize` with `{ provider: "paystack" }`
-- Amount is converted to kobo (×100) for Paystack API
-- Returns `authorizationUrl` — redirect user to this URL
-- After payment, verify with `POST /wallet/fund/verify` using the `reference`
+<!-- #updates — Rewritten: Paystack is now a standalone payments controller with webhook/callback/verify idempotency -->
 
-### Flutterwave
-- Initialize via `POST /wallet/fund/initialize` with `{ provider: "flutterwave" }`
-- Amount sent as-is (NGN)
-- Returns `authorizationUrl` — redirect user to this URL
-- After payment, verify with `POST /wallet/fund/verify` using the `reference`
+### Paystack (Token Purchase) `/payments`
+
+Token purchases use a robust zero-SDK Paystack integration with HMAC-SHA512 webhook verification and idempotent processing via an `appliedPayments` ledger.
+
+| Method | Endpoint | Auth | Body / Query | Response |
+|--------|----------|------|-------------|----------|
+| `POST` | `/payments/initiate` | Yes | `{ plan }` — `"small"`, `"medium"`, or `"large"` | `{ authorizationUrl, reference, amount, tokens, plan }` |
+| `POST` | `/payments/webhook` | No (HMAC) | Raw JSON body from Paystack | `{ message, alreadyApplied, transactionId }` |
+| `GET` | `/payments/callback` | No | `?reference=REF` (browser redirect) | Redirects to success/failure URL |
+| `POST` | `/payments/verify` | Yes | `{ reference }` | `{ alreadyApplied, transactionId, amount, tokens }` |
+
+**Flow (#updates):**
+1. **Client** calls `POST /api/payments/initiate` with a plan (`small` | `medium` | `large`)
+2. Backend creates a `PendingTokenPurchase` in the `pendingTokenPurchases` Firestore collection
+3. Backend calls Paystack `POST /transaction/initialize` to get a hosted `authorizationUrl`
+4. **User pays** in the Paystack WebView/browser
+5. Confirmation arrives via three converging paths that all call the **single `finalizePaystackPayment()` function**:
+
+   | Path | Method | Trigger | Verification |
+   |------|--------|---------|-------------|
+   | **Webhook** | `POST /payments/webhook` | Paystack server-side `charge.success` event | HMAC-SHA512 signature verified with `node:crypto` |
+   | **Callback** | `GET /payments/callback` | Paystack redirects user's browser after payment | Verifies with Paystack API, then finalizes |
+   | **Manual Verify** | `POST /payments/verify` | Client polls manually with the reference | Verifies with Paystack API, then finalizes |
+
+6. `finalizePaystackPayment()`:
+   - First verifies the transaction with Paystack's GET `/transaction/verify/:reference` endpoint
+   - Then runs an **atomic Firestore transaction** that:
+     - Checks the `appliedPayments/ledger` document for idempotency (map of `reference → timestamp`)
+     - Credits the user's wallet balance
+     - Creates a completed `Transaction` record
+     - Marks the `PendingTokenPurchase` as `completed`
+     - Records the reference in the ledger
+   - **Race condition proof**: simultaneous webhook + callback won't double-credit
+
+**Plan Pricing (#updates):**
+
+| Plan | Tokens | Price (NGN) | Price (Kobo) |
+|------|--------|-------------|-------------|
+| Small | 500 | ₦500 | 50,000 |
+| Medium | 2,000 | ₦2,000 | 200,000 |
+| Large | 5,000 | ₦5,000 | 500,000 |
+
+**Environment Variables (#updates):**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PAYSTACK_SECRET_KEY` | Yes | — | Paystack secret key (sk_xxx) |
+| `APP_BASE_URL` | Yes | `http://localhost:5000` | Backend base URL for callback |
+| `CURRENCY` | No | `NGN` | ISO 4217 currency code |
+
+**Legacy Wallet Funding (#updates):**
+The original `POST /wallet/fund/initialize` and `POST /wallet/fund/verify` endpoints remain available for direct wallet top-ups via Paystack and Flutterwave. See the Wallet section above for details.
 
 ---
 
