@@ -162,6 +162,17 @@ export interface InventoryAlert {
   createdAt: admin.firestore.Timestamp;
 }
 
+export interface UserNotification {
+  id: string;
+  userId: string;
+  type: 'wallet_funded' | 'transfer_sent' | 'transfer_received' | 'purchase_completed' | 'info';
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  isRead: boolean;
+  createdAt: admin.firestore.Timestamp;
+}
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   message: string;

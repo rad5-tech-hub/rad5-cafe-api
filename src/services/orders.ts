@@ -5,6 +5,7 @@ import { productService } from './products';
 import { walletService } from './wallet';
 import { verifyPin } from '../utils/pin-hash';
 import { expoPushService } from './expo-push';
+import { notificationService } from './notifications';
 
 const WALLETS_COLLECTION = 'wallets';
 const USERS_COLLECTION = 'users';
@@ -148,6 +149,14 @@ export class OrderService {
       `Your order ${receiptNumber} for ₦${subtotal.toLocaleString()} has been completed`,
       { type: 'purchase_completed', receiptNumber, amount: subtotal, orderId: orderRef.id },
     );
+
+    void notificationService.createUserNotification({
+      userId,
+      type: 'purchase_completed',
+      title: 'Purchase Completed',
+      body: `Your order ${receiptNumber} for ₦${subtotal.toLocaleString()} has been completed`,
+      data: { type: 'purchase_completed', receiptNumber, amount: subtotal, orderId: orderRef.id },
+    });
 
     const order = {
       id: orderRef.id,

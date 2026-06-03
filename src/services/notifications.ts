@@ -1,9 +1,10 @@
 import { db, Timestamp } from '../config/firebase';
-import { InventoryAlert, Product, AuditLog } from '../types';
+import { InventoryAlert, Product, AuditLog, UserNotification } from '../types';
 
 const PRODUCTS_COLLECTION = 'products';
 const INVENTORY_ALERTS_COLLECTION = 'inventory_alerts';
 const AUDIT_LOGS_COLLECTION = 'audit_logs';
+const USER_NOTIFICATIONS_COLLECTION = 'user_notifications';
 
 export class NotificationService {
   async checkInventoryAlerts(): Promise<InventoryAlert[]> {
@@ -99,6 +100,49 @@ export class NotificationService {
     const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AuditLog));
 
     return { logs, total };
+  }
+
+  async createUserNotification(data: {
+    userId: string;
+    type: UserNotification['type'];
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+  }): Promise<UserNotification> {
+    const ref = db.collection(USER_NOTIFICATIONS_COLLECTION).doc();
+    const notification: Omit<UserNotification, 'id'> = {
+      userId: data.userId,
+      type: data.type,
+      title: data.title,
+      body: data.body,
+      data: data.data ?? {},
+      isRead: false,
+      createdAt: Timestamp.now(),
+    };
+    await ref.set(notification);
+    return { id: ref.id, ...notification };
+  }
+
+  async getUserNotifications(userId: string, page: number = 1, limit: number = 20): Promise<{ notifications: UserNotification[]; total: number }> {
+    const query = db.collection(USER_NOTIFICATIONS_COLLECTION)
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc');
+
+    const countSnapshot = await query.count().get();
+    const total = countSnapshot.data().count;
+
+    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
+    const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserNotification));
+
+    return { notifications, total };
+  }
+
+  async markNotificationRead(notificationId: string, userId: string): Promise<void> {
+    const ref = db.collection(USER_NOTIFICATIONS_COLLECTION).doc(notificationId);
+    const doc = await ref.get();
+    if (!doc.exists) throw new Error('Notification not found');
+    if (doc.data()?.userId !== userId) throw new Error('Unauthorized');
+    await ref.update({ isRead: true });
   }
 }
 

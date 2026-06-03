@@ -53,4 +53,24 @@ router.get('/audit-logs', authenticate, requireAdmin, async (req: Request, res: 
   }
 });
 
+router.get('/user', authenticate, async (req: Request, res: Response) => {
+  try {
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+    const result = await notificationService.getUserNotifications(req.user!.userId, page, limit);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/user/:id/read', authenticate, async (req: Request, res: Response) => {
+  try {
+    await notificationService.markNotificationRead(req.params.id as string, req.user!.userId);
+    res.json({ success: true, message: 'Notification marked as read' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 export default router;

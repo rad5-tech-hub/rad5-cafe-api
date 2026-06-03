@@ -4,6 +4,7 @@ import { Request, Response } from 'express';
 import { db, Timestamp, FieldValue } from '../config/firebase';
 import { env } from '../config/env';
 import { expoPushService } from '../services/expo-push';
+import { notificationService } from '../services/notifications';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 const PENDING_PURCHASES = 'pendingTokenPurchases';
@@ -154,6 +155,14 @@ async function finalizePaystackPayment(
         `Your wallet has been credited with ₦${amountMain.toLocaleString()}`,
         { type: 'wallet_funded', amount: amountMain },
       );
+
+      void notificationService.createUserNotification({
+        userId,
+        type: 'wallet_funded',
+        title: 'Wallet Funded',
+        body: `Your wallet has been credited with ₦${amountMain.toLocaleString()}`,
+        data: { type: 'wallet_funded', amount: amountMain },
+      });
     }
 
     return {
