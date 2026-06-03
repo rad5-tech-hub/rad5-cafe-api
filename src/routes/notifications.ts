@@ -58,7 +58,14 @@ router.get('/user', authenticate, async (req: Request, res: Response) => {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
     const result = await notificationService.getUserNotifications(req.user!.userId, page, limit);
-    res.json({ success: true, ...result });
+    res.json({
+      success: true,
+      data: result.notifications,
+      notifications: result.notifications,
+      total: result.total,
+      page,
+      limit,
+    });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

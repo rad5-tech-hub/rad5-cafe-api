@@ -218,6 +218,19 @@ const options: swaggerJsdoc.Options = {
             createdAt: { type: 'string', format: 'date-time' },
           },
         },
+        UserNotification: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            userId: { type: 'string' },
+            type: { type: 'string', enum: ['wallet_funded', 'transfer_sent', 'transfer_received', 'purchase_completed', 'info'] },
+            title: { type: 'string' },
+            body: { type: 'string' },
+            data: { type: 'object' },
+            isRead: { type: 'boolean' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
         DashboardStats: {
           type: 'object',
           properties: {
@@ -1303,6 +1316,434 @@ const options: swaggerJsdoc.Options = {
           responses: {
             200: { description: 'Paginated audit logs', content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedResponse' } } } },
             403: { description: 'Admin required', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
+        },
+      },
+      '/notifications/user': {
+        get: {
+          tags: ['Notifications'],
+          summary: 'Get user notifications (paginated)',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+          ],
+          responses: {
+            200: {
+              description: 'Paginated user notifications',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      total: { type: 'integer' },
+                      page: { type: 'integer' },
+                      limit: { type: 'integer' },
+                      notifications: { type: 'array', items: { $ref: '#/components/schemas/UserNotification' } },
+                      data: { type: 'array', items: { $ref: '#/components/schemas/UserNotification' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/notifications/user/{id}/read': {
+        put: {
+          tags: ['Notifications'],
+          summary: 'Mark user notification as read',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Notification ID' }],
+          responses: {
+            200: {
+              description: 'Notification marked as read',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Notification marked as read' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      // ─── Admin Dashboard Endpoints ──────────────────────────
+      '/admin-dashboard/auth/login': {
+        post: {
+          tags: ['Admin Dashboard'],
+          summary: 'Superadmin login',
+          description: 'Authenticates superadmin using email and password, returning a custom JWT.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email', 'password'],
+                  properties: {
+                    email: { type: 'string', format: 'email', example: 'admin@rad5cafe.com' },
+                    password: { type: 'string', example: 'Admin@12345' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Login successful', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+            401: { description: 'Invalid credentials', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/auth/setup-pin': {
+        post: {
+          tags: ['Admin Dashboard'],
+          summary: 'Set up Admin transaction PIN',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['pin'],
+                  properties: {
+                    pin: { type: 'string', pattern: '^\\d{4}$', example: '1234' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'PIN setup successful', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/auth/change-pin': {
+        post: {
+          tags: ['Admin Dashboard'],
+          summary: 'Change Admin transaction PIN',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['oldPin', 'newPin'],
+                  properties: {
+                    oldPin: { type: 'string', example: '1234' },
+                    newPin: { type: 'string', pattern: '^\\d{4}$', example: '5678' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'PIN changed successfully', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/overview': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Dashboard Overview Statistics',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Overview statistics', content: { 'application/json': { schema: { $ref: '#/components/schemas/DashboardStats' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/products': {
+        post: {
+          tags: ['Admin Dashboard'],
+          summary: 'Add product with PIN verification',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name', 'categoryId', 'costPrice', 'sellingPrice', 'quantity', 'pin'],
+                  properties: {
+                    name: { type: 'string' },
+                    categoryId: { type: 'string' },
+                    description: { type: 'string' },
+                    imageUrl: { type: 'string' },
+                    costPrice: { type: 'number' },
+                    sellingPrice: { type: 'number' },
+                    quantity: { type: 'integer' },
+                    lowStockThreshold: { type: 'integer' },
+                    pin: { type: 'string', example: '1234' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Product added successfully', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/products/{id}/restock': {
+        post: {
+          tags: ['Admin Dashboard'],
+          summary: 'Restock product with PIN verification',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['quantity', 'pin'],
+                  properties: {
+                    quantity: { type: 'integer', example: 10 },
+                    newCostPrice: { type: 'number', example: 150 },
+                    pin: { type: 'string', example: '1234' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Product restocked successfully', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/inventory-tracking': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Inventory Tracking List',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
+          ],
+          responses: {
+            200: { description: 'Inventory tracking list', content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/categories': {
+        post: {
+          tags: ['Admin Dashboard'],
+          summary: 'Create Product Category',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string', example: 'Drinks' },
+                    description: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Category created', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/categories/{id}': {
+        put: {
+          tags: ['Admin Dashboard'],
+          summary: 'Edit Product Category',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    isActive: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Category updated', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+        delete: {
+          tags: ['Admin Dashboard'],
+          summary: 'Delete Product Category',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Category deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/sales': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Get All Sales (filterable & paginated)',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'filter', in: 'query', schema: { type: 'string', enum: ['all', 'daily', 'weekly', 'monthly', 'custom'] } },
+            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+          ],
+          responses: {
+            200: { description: 'Sales list', content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginatedResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/sales/{id}/adjust': {
+        put: {
+          tags: ['Admin Dashboard'],
+          summary: 'Adjust order status (Refund & Stock revert if cancelled)',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['status', 'pin'],
+                  properties: {
+                    status: { type: 'string', enum: ['pending', 'completed', 'cancelled'] },
+                    pin: { type: 'string', example: '1234' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Order adjusted successfully', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/analytics/revenue': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Revenue Analytics Charts Data',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'period', in: 'query', schema: { type: 'string', enum: ['daily', 'weekly', 'monthly'] } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 30 } },
+          ],
+          responses: {
+            200: { description: 'Revenue and profit chart points', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/analytics/top-products': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Top Products Insights',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } }],
+          responses: {
+            200: { description: 'Best selling and highest profit products', content: { 'application/json': { schema: { $ref: '#/components/schemas/TopProducts' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/analytics/customers': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Customer Insights',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } }],
+          responses: {
+            200: { description: 'Most active and highest spending customers', content: { 'application/json': { schema: { $ref: '#/components/schemas/CustomerInsights' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/analytics/profit': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Profit Analytics',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Product, daily, monthly, and lifetime profit', content: { 'application/json': { schema: { $ref: '#/components/schemas/ProfitAnalytics' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/alerts': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Get Unacknowledged Stock Alerts',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Inventory alerts', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/InventoryAlert' } } } } },
+          },
+        },
+      },
+      '/admin-dashboard/alerts/{id}/acknowledge': {
+        put: {
+          tags: ['Admin Dashboard'],
+          summary: 'Acknowledge Stock Alert',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Alert acknowledged', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/wallet/adjust': {
+        post: {
+          tags: ['Admin Dashboard'],
+          summary: 'Adjust User Wallet Balance',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['userId', 'amount', 'pin'],
+                  properties: {
+                    userId: { type: 'string' },
+                    amount: { type: 'number', description: 'Positive to credit, negative to debit' },
+                    description: { type: 'string' },
+                    pin: { type: 'string', example: '1234' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Wallet adjusted successfully', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
+      '/admin-dashboard/reports/export': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Export Reports (PDF, Excel, CSV)',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'type', in: 'query', required: true, schema: { type: 'string', enum: ['sales', 'inventory', 'profit', 'transactions'] } },
+            { name: 'format', in: 'query', required: true, schema: { type: 'string', enum: ['pdf', 'excel', 'csv'] } },
+            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'userId', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: { description: 'Report file download' },
           },
         },
       },
