@@ -77,12 +77,17 @@ export class OrderService {
     });
 
     await db.runTransaction(async (transaction) => {
+      const productDocs: { op: typeof stockUpdateOps[0]; product: Product }[] = [];
       for (const op of stockUpdateOps) {
         const productDoc = await transaction.get(op.productRef);
         const product = productDoc.data() as Product;
         if (product.quantity < op.item.quantity) {
           throw new Error(`Insufficient stock for ${product.name}`);
         }
+        productDocs.push({ op, product });
+      }
+
+      for (const { op, product } of productDocs) {
         transaction.update(op.productRef, {
           quantity: FieldValue.increment(-op.item.quantity),
           totalSold: FieldValue.increment(op.item.quantity),

@@ -297,6 +297,7 @@ router.get('/inventory-tracking', authenticateAdmin, async (req: Request, res: R
         id: doc.id,
         name: data.name,
         categoryId: data.categoryId,
+        imageUrl: data.imageUrl,
         costPrice: data.costPrice,
         sellingPrice: data.sellingPrice,
         totalAdded: data.totalAdded || data.quantity,
