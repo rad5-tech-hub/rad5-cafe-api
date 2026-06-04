@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
 import { auth, db, Timestamp } from "../config/firebase";
-import { User } from "../types";
+import { env } from "../config/env";
+import { User, JwtPayload } from "../types";
 import { getNextId } from "../utils/id-generator";
 
 declare global {
@@ -89,7 +91,39 @@ export async function authenticate(
       return;
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader.split(" ")[1]!;
+
+    // 1. Try Custom JWT verification (for admin dashboard requests)
+    try {
+      const decoded = jwt.verify(token, env.jwt.secret) as JwtPayload;
+      const userRef = db.collection("users").doc(decoded.userId);
+      const userDoc = await userRef.get();
+
+      if (!userDoc.exists) {
+        res.status(401).json({ success: false, message: "User not found." });
+        return;
+      }
+
+      const user = userDoc.data() as User;
+      if (!user.isActive) {
+        res.status(403).json({ success: false, message: "Account deactivated. Contact admin." });
+        return;
+      }
+
+      req.user = {
+        userId: userDoc.id,
+        uid: user.uid,
+        email: user.email,
+        role: user.role,
+        walletId: user.walletId,
+      };
+      next();
+      return;
+    } catch (jwtError) {
+      // Fallback to Firebase ID token verification
+    }
+
+    // 2. Try Firebase ID Token Verification
     const decoded = await auth.verifyIdToken(token);
     const firebaseUid = decoded.uid;
     const email = decoded.email || "";
