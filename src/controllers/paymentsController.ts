@@ -278,6 +278,7 @@ export async function initiatePayment(req: Request, res: Response): Promise<void
         accessCode: result.data.access_code,
         amount: amountKobo,
         displayAmount: `${amountNaira.toLocaleString()} ${env.currency}`,
+        publicKey: env.paystack.publicKey,
       },
     });
   } catch (error: any) {
