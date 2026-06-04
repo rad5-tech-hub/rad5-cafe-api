@@ -58,13 +58,29 @@ router.get('/user', authenticate, async (req: Request, res: Response) => {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
     const result = await notificationService.getUserNotifications(req.user!.userId, page, limit);
+    
+    const formatted = result.notifications.map((n) => ({
+      id: n.id,
+      userId: n.userId,
+      type: n.type,
+      title: n.title,
+      body: n.body,
+      data: n.data || {},
+      isRead: n.isRead,
+      createdAt: n.createdAt
+        ? (typeof (n.createdAt as any).toDate === 'function'
+          ? (n.createdAt as any).toDate().toISOString()
+          : new Date(n.createdAt as any).toISOString())
+        : new Date().toISOString(),
+    }));
+
     res.json({
       success: true,
-      data: result.notifications,
-      notifications: result.notifications,
       total: result.total,
       page,
       limit,
+      notifications: formatted,
+      data: formatted,
     });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
