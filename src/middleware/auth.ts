@@ -133,12 +133,13 @@ export async function authenticate(
     const userDoc = await userRef.get();
 
     if (!userDoc.exists) {
+      const roleFromClaims = decoded.isAdmin === true ? "admin" as const : "customer";
       const created = await autoCreateUser(firebaseUid, email);
       req.user = {
         userId: created.docId,
         uid: created.uid,
         email,
-        role: "customer",
+        role: roleFromClaims,
         walletId: created.walletId,
       };
       next();
@@ -157,11 +158,13 @@ export async function authenticate(
       return;
     }
 
+    const roleFromClaims = decoded.isAdmin === true ? "admin" as const : user.role;
+
     req.user = {
       userId: userDoc.id,
       uid: user.uid,
       email: user.email,
-      role: user.role,
+      role: roleFromClaims,
       walletId: user.walletId,
     };
     next();

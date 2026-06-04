@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { db } from '../config/firebase.js';
 import { Transaction, User } from '../types/index.js';
+import { promoteToAdmin, demoteFromAdmin } from '../utils/firebase-custom-claims.js';
 
 const USERS_COLLECTION = 'users';
 
@@ -100,6 +101,46 @@ router.put('/users/:id/toggle-status', authenticate, requireAdmin, async (req: R
     const user = userDoc.data() as User;
     await userRef.update({ isActive: !user.isActive });
     res.json({ success: true, message: `User ${user.isActive ? 'deactivated' : 'activated'}` });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/users/:id/role', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { role } = req.body;
+    if (!role || !['admin', 'customer'].includes(role)) {
+      res.status(400).json({ success: false, message: 'Valid role is required (admin or customer)' });
+      return;
+    }
+
+    const userRef = db.collection(USERS_COLLECTION).doc(req.params.id as string);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    const user = userDoc.data() as User;
+
+    if (user.role === role) {
+      res.status(400).json({ success: false, message: `User already has role: ${role}` });
+      return;
+    }
+
+    const firebaseUid = user.firebaseUid || userDoc.id;
+    if (firebaseUid === 'admin-super') {
+      res.status(400).json({ success: false, message: 'Superadmin role cannot be changed via this endpoint' });
+      return;
+    }
+
+    if (role === 'admin') {
+      await promoteToAdmin(firebaseUid);
+    } else {
+      await demoteFromAdmin(firebaseUid);
+    }
+
+    res.json({ success: true, message: `User role updated to ${role}` });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

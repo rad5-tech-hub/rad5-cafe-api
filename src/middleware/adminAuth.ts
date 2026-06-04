@@ -70,6 +70,31 @@ export async function authenticateAdmin(
       const decoded = await auth.verifyIdToken(token);
       const firebaseUid = decoded.uid;
 
+      // Check Firebase custom claims first (fast path)
+      if (decoded.isAdmin === true) {
+        const userDoc = await db.collection('users').doc(firebaseUid).get();
+        if (!userDoc.exists) {
+          res.status(401).json({ success: false, message: 'Admin account not found in database.' });
+          return;
+        }
+
+        const user = userDoc.data() as User;
+        if (!user.isActive) {
+          res.status(403).json({ success: false, message: 'Account is deactivated.' });
+          return;
+        }
+
+        req.user = {
+          userId: userDoc.id,
+          uid: user.uid,
+          email: user.email,
+          role: 'admin',
+          walletId: user.walletId,
+        };
+        return next();
+      }
+
+      // Fallback: check Firestore role (for admins without custom claims set yet)
       const userDoc = await db.collection('users').doc(firebaseUid).get();
       if (!userDoc.exists) {
         res.status(401).json({ success: false, message: 'Admin account not found in database.' });
