@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { Request, Response } from 'express';
-import { db, Timestamp, FieldValue } from '../config/firebase';
-import { env } from '../config/env';
-import { expoPushService } from '../services/expo-push';
-import { notificationService } from '../services/notifications';
+import { db, Timestamp, FieldValue } from '../config/firebase.js';
+import { env } from '../config/env.js';
+import { expoPushService } from '../services/expo-push.js';
+import { notificationService } from '../services/notifications.js';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 const PENDING_PURCHASES = 'pendingTokenPurchases';

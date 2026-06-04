@@ -1,11 +1,11 @@
-import { db, Timestamp, FieldValue } from '../config/firebase';
-import { Order, OrderItem, Receipt, Transaction, Product } from '../types';
-import { generateReceiptNumber, getNextId } from '../utils/id-generator';
-import { productService } from './products';
-import { walletService } from './wallet';
-import { verifyPin } from '../utils/pin-hash';
-import { expoPushService } from './expo-push';
-import { notificationService } from './notifications';
+import { db, Timestamp, FieldValue } from '../config/firebase.js';
+import { Order, OrderItem, Receipt, Transaction, Product } from '../types/index.js';
+import { generateReceiptNumber, getNextId } from '../utils/id-generator.js';
+import { productService } from './products.js';
+import { walletService } from './wallet.js';
+import { verifyPin } from '../utils/pin-hash.js';
+import { expoPushService } from './expo-push.js';
+import { notificationService } from './notifications.js';
 
 const WALLETS_COLLECTION = 'wallets';
 const USERS_COLLECTION = 'users';

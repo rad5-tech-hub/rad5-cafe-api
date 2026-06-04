@@ -1,5 +1,5 @@
-import { db, Timestamp } from '../config/firebase';
-import { env } from '../config/env';
+import { db, Timestamp } from '../config/firebase.js';
+import { env } from '../config/env.js';
 
 async function main() {
   const adminEmail = env.admin.email || 'admin@rad5cafe.com';

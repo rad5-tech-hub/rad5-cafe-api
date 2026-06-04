@@ -1,5 +1,5 @@
-import { db } from '../config/firebase';
-import { env } from '../config/env';
+import { db } from '../config/firebase.js';
+import { env } from '../config/env.js';
 
 const COUNTERS_COLLECTION = 'counters';
 

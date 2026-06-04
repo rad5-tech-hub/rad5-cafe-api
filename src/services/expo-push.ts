@@ -3,8 +3,8 @@ import Expo, {
   ExpoPushTicket,
   ExpoPushReceipt,
 } from 'expo-server-sdk';
-import { db } from '../config/firebase';
-import { env } from '../config/env';
+import { db } from '../config/firebase.js';
+import { env } from '../config/env.js';
 
 const USERS_COLLECTION = 'users';
 

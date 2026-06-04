@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { categoryService } from '../services/categories';
-import { authenticate } from '../middleware/auth';
-import { requireAdmin } from '../middleware/admin';
+import { categoryService } from '../services/categories.js';
+import { authenticate } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/admin.js';
 
 const router = Router();
 

@@ -1,7 +1,7 @@
-import { db, Timestamp } from '../config/firebase';
-import { User } from '../types';
-import { hashPin } from '../utils/pin-hash';
-import { sanitizeUserData } from '../utils/helpers';
+import { db, Timestamp } from '../config/firebase.js';
+import { User } from '../types/index.js';
+import { hashPin } from '../utils/pin-hash.js';
+import { sanitizeUserData } from '../utils/helpers.js';
 
 const USERS_COLLECTION = 'users';
 

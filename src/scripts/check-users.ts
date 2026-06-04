@@ -1,4 +1,4 @@
-import { db } from '../config/firebase';
+import { db } from '../config/firebase.js';
 
 async function main() {
   console.log("Fetching users from Firestore...");

@@ -1,5 +1,5 @@
-import { db, Timestamp } from '../config/firebase';
-import { Category } from '../types';
+import { db, Timestamp } from '../config/firebase.js';
+import { Category } from '../types/index.js';
 
 const CATEGORIES_COLLECTION = 'categories';
 

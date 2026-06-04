@@ -1,4 +1,4 @@
-import { Timestamp } from '../config/firebase';
+import { Timestamp } from '../config/firebase.js';
 
 export function now(): FirebaseFirestore.Timestamp {
   return Timestamp.now();

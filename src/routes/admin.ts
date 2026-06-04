@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { reportService } from '../services/reports';
-import { authenticate } from '../middleware/auth';
-import { requireAdmin } from '../middleware/admin';
-import { db } from '../config/firebase';
-import { Transaction, User } from '../types';
+import { reportService } from '../services/reports.js';
+import { authenticate } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/admin.js';
+import { db } from '../config/firebase.js';
+import { Transaction, User } from '../types/index.js';
 
 const USERS_COLLECTION = 'users';
 

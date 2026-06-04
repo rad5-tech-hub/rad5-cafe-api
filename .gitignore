@@ -36,3 +36,5 @@ rd-xx.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+.vercel

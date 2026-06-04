@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { auth, db, Timestamp } from "../config/firebase";
-import { env } from "../config/env";
-import { User, JwtPayload } from "../types";
-import { getNextId } from "../utils/id-generator";
+import { auth, db, Timestamp } from "../config/firebase.js";
+import { env } from "../config/env.js";
+import { User, JwtPayload } from "../types/index.js";
+import { getNextId } from "../utils/id-generator.js";
 
 declare global {
   namespace Express {

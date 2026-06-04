@@ -1,7 +1,7 @@
-import { db, Timestamp, FieldValue } from '../config/firebase';
-import { env } from '../config/env';
-import { Wallet, Transaction } from '../types';
-import { generateReference } from '../utils/helpers';
+import { db, Timestamp, FieldValue } from '../config/firebase.js';
+import { env } from '../config/env.js';
+import { Wallet, Transaction } from '../types/index.js';
+import { generateReference } from '../utils/helpers.js';
 
 const WALLETS_COLLECTION = 'wallets';
 const TRANSACTIONS_COLLECTION = 'transactions';

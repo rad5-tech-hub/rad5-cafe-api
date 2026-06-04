@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer';
-import { db, Timestamp } from '../config/firebase';
-import { Order, Product, Transaction, User, Category } from '../types';
-import { reportService } from './reports';
+import { db, Timestamp } from '../config/firebase.js';
+import { Order, Product, Transaction, User, Category } from '../types/index.js';
+import { reportService } from './reports.js';
 
 export class AdminReportsService {
   private async getSalesData(startDate?: Date, endDate?: Date) {

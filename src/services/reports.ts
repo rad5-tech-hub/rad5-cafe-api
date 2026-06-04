@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
-import { db, Timestamp } from '../config/firebase';
-import { Order, Product, Transaction, User } from '../types';
+import { db, Timestamp } from '../config/firebase.js';
+import { Order, Product, Transaction, User } from '../types/index.js';
 
 const ORDERS_COLLECTION = 'orders';
 const PRODUCTS_COLLECTION = 'products';

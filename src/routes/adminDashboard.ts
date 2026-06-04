@@ -1,16 +1,16 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcryptjs from 'bcryptjs';
-import { db, Timestamp, FieldValue } from '../config/firebase';
-import { env } from '../config/env';
-import { authenticateAdmin } from '../middleware/adminAuth';
-import { productService } from '../services/products';
-import { categoryService } from '../services/categories';
-import { analyticsService } from '../services/analytics';
-import { notificationService } from '../services/notifications';
-import { adminReportsService } from '../services/adminReports';
-import { hashPin, verifyPin } from '../utils/pin-hash';
-import { Product, Order, User, Category } from '../types';
+import { db, Timestamp, FieldValue } from '../config/firebase.js';
+import { env } from '../config/env.js';
+import { authenticateAdmin } from '../middleware/adminAuth.js';
+import { productService } from '../services/products.js';
+import { categoryService } from '../services/categories.js';
+import { analyticsService } from '../services/analytics.js';
+import { notificationService } from '../services/notifications.js';
+import { adminReportsService } from '../services/adminReports.js';
+import { hashPin, verifyPin } from '../utils/pin-hash.js';
+import { Product, Order, User, Category } from '../types/index.js';
 
 const router = Router();
 
@@ -268,7 +268,11 @@ router.post('/products/:id/restock', authenticateAdmin, async (req: Request, res
     const product = await productService.restock(productId, Number(quantity), newCostPrice ? Number(newCostPrice) : undefined);
 
     // Log Audit Trail
-    await logAudit(req.user!.userId, 'restock_product', 'products', productId, { quantity, newCostPrice }, req);
+    const auditDetails: Record<string, unknown> = { quantity };
+    if (newCostPrice !== undefined) {
+      auditDetails.newCostPrice = Number(newCostPrice);
+    }
+    await logAudit(req.user!.userId, 'restock_product', 'products', productId, auditDetails, req);
 
     res.json({ success: true, message: 'Product restocked successfully', data: product });
   } catch (error: any) {

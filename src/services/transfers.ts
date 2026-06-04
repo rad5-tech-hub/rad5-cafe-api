@@ -1,8 +1,8 @@
-import { db, Timestamp, FieldValue } from '../config/firebase';
-import { User, Wallet } from '../types';
-import { generateReference } from '../utils/helpers';
-import { expoPushService } from './expo-push';
-import { notificationService } from './notifications';
+import { db, Timestamp, FieldValue } from '../config/firebase.js';
+import { User, Wallet } from '../types/index.js';
+import { generateReference } from '../utils/helpers.js';
+import { expoPushService } from './expo-push.js';
+import { notificationService } from './notifications.js';
 
 const TRANSFERS_COLLECTION = 'transfers';
 const TRANSACTIONS_COLLECTION = 'transactions';

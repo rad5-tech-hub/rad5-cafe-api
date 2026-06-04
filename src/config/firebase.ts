@@ -1,6 +1,6 @@
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
-import { env } from './env';
+import { env } from './env.js';
 
 function getServiceAccount(): admin.ServiceAccount {
   if (env.firebase.serviceAccountJson) {

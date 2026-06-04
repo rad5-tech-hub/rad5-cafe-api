@@ -1,5 +1,5 @@
-import { db, Timestamp } from '../config/firebase';
-import { User, Product, Order, Wallet } from '../types';
+import { db, Timestamp } from '../config/firebase.js';
+import { User, Product, Order, Wallet } from '../types/index.js';
 
 const USERS_COLLECTION = 'users';
 const PRODUCTS_COLLECTION = 'products';

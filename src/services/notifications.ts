@@ -1,5 +1,5 @@
-import { db, Timestamp } from '../config/firebase';
-import { InventoryAlert, Product, AuditLog, UserNotification } from '../types';
+import { db, Timestamp } from '../config/firebase.js';
+import { InventoryAlert, Product, AuditLog, UserNotification } from '../types/index.js';
 
 const PRODUCTS_COLLECTION = 'products';
 const INVENTORY_ALERTS_COLLECTION = 'inventory_alerts';

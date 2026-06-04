@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { walletService } from '../services/wallet';
-import { authenticate } from '../middleware/auth';
+import { walletService } from '../services/wallet.js';
+import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
 

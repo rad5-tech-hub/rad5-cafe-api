@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../config/firebase';
-import { Product, Category } from '../types';
-import { authenticate } from '../middleware/auth';
+import { db } from '../config/firebase.js';
+import { Product, Category } from '../types/index.js';
+import { authenticate } from '../middleware/auth.js';
 
 const PRODUCTS_COLLECTION = 'products';
 const CATEGORIES_COLLECTION = 'categories';

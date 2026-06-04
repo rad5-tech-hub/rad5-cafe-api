@@ -1,11 +1,11 @@
 import { Router, raw } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate } from '../middleware/auth.js';
 import {
   initiatePayment,
   handleWebhook,
   handleCallback,
   verifyPayment,
-} from '../controllers/paymentsController';
+} from '../controllers/paymentsController.js';
 
 const router = Router();
 

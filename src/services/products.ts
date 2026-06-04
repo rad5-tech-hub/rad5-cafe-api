@@ -1,6 +1,6 @@
-import { db, Timestamp, FieldValue } from '../config/firebase';
-import { Product, StockHistory } from '../types';
-import { calculateProfit } from '../utils/helpers';
+import { db, Timestamp, FieldValue } from '../config/firebase.js';
+import { Product, StockHistory } from '../types/index.js';
+import { calculateProfit } from '../utils/helpers.js';
 
 const PRODUCTS_COLLECTION = 'products';
 const STOCK_HISTORY_COLLECTION = 'stock_history';
@@ -121,16 +121,19 @@ export class ProductService {
 
     await ref.update(updateData);
 
-    await db.collection(STOCK_HISTORY_COLLECTION).add({
+    const historyEntry: Record<string, unknown> = {
       productId: id,
       type: 'added',
       quantity,
-      costPrice: newCostPrice,
       previousStock: oldStock,
       newStock: oldStock + quantity,
       reference: `RESTOCK-${Date.now()}`,
       createdAt: Timestamp.now(),
-    } as unknown as Partial<StockHistory>);
+    };
+    if (newCostPrice !== undefined) {
+      historyEntry.costPrice = newCostPrice;
+    }
+    await db.collection(STOCK_HISTORY_COLLECTION).add(historyEntry as unknown as Partial<StockHistory>);
 
     return this.getById(id);
   }

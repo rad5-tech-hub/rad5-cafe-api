@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { transferService } from '../services/transfers';
-import { authenticate } from '../middleware/auth';
-import { db } from '../config/firebase';
-import { User } from '../types';
+import { transferService } from '../services/transfers.js';
+import { authenticate } from '../middleware/auth.js';
+import { db } from '../config/firebase.js';
+import { User } from '../types/index.js';
 
 const USERS_COLLECTION = 'users';
 

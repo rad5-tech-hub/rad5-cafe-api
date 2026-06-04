@@ -1,7 +1,7 @@
 import admin from 'firebase-admin';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { env } from '../config/env';
+import { env } from '../config/env.js';
 
 interface SeedUser {
   uid: string;
