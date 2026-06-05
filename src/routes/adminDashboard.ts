@@ -6,6 +6,7 @@ import { env } from '../config/env.js';
 import { authenticateAdmin } from '../middleware/adminAuth.js';
 import { productService } from '../services/products.js';
 import { categoryService } from '../services/categories.js';
+import { orderService } from '../services/orders.js';
 import { analyticsService } from '../services/analytics.js';
 import { notificationService } from '../services/notifications.js';
 import { adminReportsService } from '../services/adminReports.js';
@@ -546,6 +547,39 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
     await logAudit(req.user!.userId, 'adjust_sale', 'orders', orderId, { oldStatus, newStatus: status }, req);
 
     res.json({ success: true, message: `Order status adjusted to ${status} successfully` });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Get Unissued Orders (paid but not yet processed/issued by admin)
+ */
+router.get('/sales/unissued', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+    const result = await orderService.getUnissuedOrders(page, limit);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Issue an Order (mark as processed by admin)
+ */
+router.put('/sales/:id/issue', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id as string;
+    const order = await orderService.issueOrder(orderId, req.user!.userId);
+
+    await logAudit(req.user!.userId, 'issue_order', 'orders', orderId, {
+      receiptNumber: order.receiptNumber,
+      total: order.total,
+    }, req);
+
+    res.json({ success: true, message: 'Order issued successfully', data: order });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

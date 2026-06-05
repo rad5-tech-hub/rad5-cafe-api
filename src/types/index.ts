@@ -79,6 +79,9 @@ export interface Order {
   subtotal: number;
   total: number;
   status: 'pending' | 'completed' | 'cancelled';
+  issued: boolean;
+  issuedAt?: admin.firestore.Timestamp;
+  issuedBy?: string;
   createdAt: admin.firestore.Timestamp;
 }
 

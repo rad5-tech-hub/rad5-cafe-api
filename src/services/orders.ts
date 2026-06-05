@@ -112,6 +112,7 @@ export class OrderService {
         subtotal,
         total: subtotal,
         status: 'completed',
+        issued: false,
         createdAt: Timestamp.now(),
       } as unknown as Partial<Order>);
 
@@ -172,6 +173,7 @@ export class OrderService {
       subtotal,
       total: subtotal,
       status: 'completed' as const,
+      issued: false,
       createdAt: Timestamp.now(),
     } as unknown as Order;
 
@@ -232,6 +234,41 @@ export class OrderService {
     const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
 
     return { orders, total };
+  }
+
+  async getUnissuedOrders(page: number = 1, limit: number = 20): Promise<{ orders: Order[]; total: number }> {
+    const query = db.collection(ORDERS_COLLECTION)
+      .where('issued', '==', false)
+      .where('status', '==', 'completed')
+      .orderBy('createdAt', 'asc');
+
+    const countSnapshot = await query.count().get();
+    const total = countSnapshot.data().count;
+
+    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
+    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+
+    return { orders, total };
+  }
+
+  async issueOrder(orderId: string, adminUserId: string): Promise<Order> {
+    const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+    const orderDoc = await orderRef.get();
+
+    if (!orderDoc.exists) throw new Error('Order not found');
+
+    const order = { id: orderDoc.id, ...orderDoc.data() } as Order;
+
+    if (order.issued) throw new Error('Order already issued');
+    if (order.status !== 'completed') throw new Error('Only completed orders can be issued');
+
+    await orderRef.update({
+      issued: true,
+      issuedAt: Timestamp.now(),
+      issuedBy: adminUserId,
+    });
+
+    return { ...order, issued: true, issuedAt: Timestamp.now(), issuedBy: adminUserId };
   }
 }
 
