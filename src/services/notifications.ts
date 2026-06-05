@@ -102,6 +102,24 @@ export class NotificationService {
     return { logs, total };
   }
 
+  async getUserAuditLogs(userId: string, action?: string, page: number = 1, limit: number = 50): Promise<{ logs: AuditLog[]; total: number }> {
+    let query: FirebaseFirestore.Query = db.collection(AUDIT_LOGS_COLLECTION)
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc');
+
+    if (action) {
+      query = query.where('action', '==', action);
+    }
+
+    const countSnapshot = await query.count().get();
+    const total = countSnapshot.data().count;
+
+    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
+    const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AuditLog));
+
+    return { logs, total };
+  }
+
   async createUserNotification(data: {
     userId: string;
     type: UserNotification['type'];

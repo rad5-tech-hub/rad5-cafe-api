@@ -5,6 +5,7 @@ import { requireAdmin } from '../middleware/admin.js';
 import { db } from '../config/firebase.js';
 import { Transaction, User } from '../types/index.js';
 import { promoteToAdmin, demoteFromAdmin } from '../utils/firebase-custom-claims.js';
+import { notificationService } from '../services/notifications.js';
 
 const USERS_COLLECTION = 'users';
 
@@ -86,6 +87,18 @@ router.get('/users', authenticate, requireAdmin, async (req: Request, res: Respo
     const totalSnapshot = await db.collection(USERS_COLLECTION).count().get();
     const total = totalSnapshot.data().count;
     res.json({ success: true, data: users, total, page, limit });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/users/:id/payment-logs', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.id as string;
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 50);
+    const result = await notificationService.getUserAuditLogs(userId, 'payment_finalized', page, limit);
+    res.json({ success: true, ...result });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
