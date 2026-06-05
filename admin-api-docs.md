@@ -320,7 +320,13 @@ The authentication middleware automatically parses the token:
         "date": "2026-06-03T12:00:00.000Z"
       }
     ],
-    "total": 1
+    "totalRevenue": 3600,
+    "totalProfit": 1200,
+    "totalOrders": 1,
+    "total": 1,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1
   }
   ```
 

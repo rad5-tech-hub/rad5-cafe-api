@@ -410,7 +410,17 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
     }
 
     const countSnapshot = await query.count().get();
-    const total = countSnapshot.data().count;
+    const totalOrders = countSnapshot.data().count;
+
+    const allSnapshot = await query.select('total', 'items').get();
+    let totalRevenue = 0;
+    let totalProfit = 0;
+    for (const doc of allSnapshot.docs) {
+      const d = doc.data();
+      totalRevenue += d.total || 0;
+      totalProfit += (d.items || []).reduce((sum: number, item: any) =>
+        sum + (item.unitPrice - item.costPrice) * item.quantity, 0);
+    }
 
     const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
     const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
@@ -424,7 +434,7 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
         customerName = userData.fullName?.trim() || userData.email?.split('@')[0] || 'Unnamed Customer';
       }
 
-      const totalProfit = order.items.reduce((sum, item) => 
+      const profit = order.items.reduce((sum, item) => 
         sum + (item.unitPrice - item.costPrice) * item.quantity, 0
       );
 
@@ -434,7 +444,7 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
         customerName,
         items: order.items,
         revenue: order.total,
-        profit: totalProfit,
+        profit,
         status: order.status,
         issued: order.issued ?? false,
         issuedBy: order.issuedBy || null,
@@ -446,10 +456,13 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: salesList,
-      total,
+      totalRevenue,
+      totalProfit,
+      totalOrders,
+      total: totalOrders,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(totalOrders / limit),
     });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
