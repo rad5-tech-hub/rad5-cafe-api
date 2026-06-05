@@ -34,11 +34,12 @@ function parseRawJSON(raw: Buffer): Record<string, unknown> {
 
 // =====================================================================
 // CORE: finalizePaystackPayment — idempotent via appliedPayments ledger
-// Both confirmation paths (webhook, callback) converge here
+// All three confirmation paths (webhook, callback, verify) converge here
 // Validates amount match before processing
 // =====================================================================
 async function finalizePaystackPayment(
   reference: string,
+  userInfo?: { userId: string; walletId: string },
 ): Promise<{
   success: boolean;
   alreadyApplied: boolean;
@@ -78,6 +79,11 @@ async function finalizePaystackPayment(
 
   if (purchaseData.status === 'completed') {
     return { success: true, alreadyApplied: true, message: 'Purchase already completed' };
+  }
+
+  // Cross-check ownership (for manual verify flows)
+  if (userInfo && purchaseData.userId !== userInfo.userId) {
+    return { success: false, alreadyApplied: false, message: 'Payment does not belong to this user' };
   }
 
   // ── Step 2.5: Validate amount match ──────────────────────────────────
@@ -408,6 +414,49 @@ export async function handleCallback(req: Request, res: Response): Promise<void>
     res.redirect(`${env.app.corsOrigin}/wallet/funding/success?${params.toString()}`);
   } catch {
     res.redirect(`${env.app.corsOrigin}/wallet/funding/failed?reason=server_error`);
+  }
+}
+
+// =====================================================================
+// HANDLER: POST /api/payments/verify
+// Authenticated — manual client-side verification fallback
+// =====================================================================
+export async function verifyPayment(req: Request, res: Response): Promise<void> {
+  try {
+    const { reference } = req.body;
+
+    if (!reference || typeof reference !== 'string') {
+      res.status(400).json({ success: false, message: 'Valid reference string required' });
+      return;
+    }
+
+    const user = req.user!;
+    const result = await finalizePaystackPayment(reference, {
+      userId: user.userId,
+      walletId: user.walletId!,
+    });
+
+    if (!result.success) {
+      res.status(400).json({
+        success: false,
+        message: result.message || 'Payment verification failed — may not be completed on Paystack',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: result.alreadyApplied ? 'Payment already verified and credited' : 'Payment verified successfully',
+      data: {
+        reference,
+        alreadyApplied: result.alreadyApplied,
+        transactionId: result.transactionId,
+        amount: result.amount,
+        walletCredited: !result.alreadyApplied,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Verification failed' });
   }
 }
 

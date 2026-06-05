@@ -4,6 +4,7 @@ import {
   initiatePayment,
   handleWebhook,
   handleCallback,
+  verifyPayment,
 } from '../controllers/paymentsController.js';
 
 const router = Router();
@@ -16,5 +17,8 @@ router.post('/webhook', raw({ type: 'application/json' }), handleWebhook);
 
 // Paystack browser redirect callback (no auth)
 router.get('/callback', handleCallback);
+
+// Manual client-side verify fallback (authenticated)
+router.post('/verify', authenticate, verifyPayment);
 
 export default router;
