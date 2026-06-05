@@ -420,7 +420,8 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
       let customerName = 'Unknown';
       const userDoc = await db.collection('users').doc(order.userId).get();
       if (userDoc.exists) {
-        customerName = (userDoc.data() as User).fullName || 'Unnamed Customer';
+        const userData = userDoc.data() as User;
+        customerName = userData.fullName?.trim() || userData.email?.split('@')[0] || 'Unnamed Customer';
       }
 
       const totalProfit = order.items.reduce((sum, item) => 
