@@ -79,8 +79,9 @@ router.get('/users', authenticate, requireAdmin, async (req: Request, res: Respo
       .get();
     const users = snapshot.docs.map(doc => {
       const data = doc.data() as Record<string, unknown>;
-      const { password, pin, id: _id, ...safe } = data;
-      return { id: doc.id, ...safe };
+      const { password, pin, id: _id, fullName, email, ...safe } = data;
+      const displayName = (fullName as string)?.trim() || (email as string)?.split('@')[0] || 'Unknown User';
+      return { id: doc.id, fullName: displayName, email, ...safe };
     });
     const totalSnapshot = await db.collection(USERS_COLLECTION).count().get();
     const total = totalSnapshot.data().count;
