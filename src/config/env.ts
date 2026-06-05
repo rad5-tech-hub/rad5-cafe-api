@@ -50,6 +50,12 @@ export const env = {
     baseUrl: process.env.APP_BASE_URL || 'http://localhost:5000',
   },
 
+  rateLimit: {
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
+    max: parseInt(process.env.RATE_LIMIT_MAX || '1000', 10),
+    authMax: parseInt(process.env.RATE_LIMIT_AUTH_MAX || '20', 10),
+  },
+
   currency: process.env.CURRENCY || 'NGN',
 
   expo: {

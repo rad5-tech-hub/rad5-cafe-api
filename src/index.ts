@@ -25,6 +25,8 @@ import { errorHandler } from './middleware/error.js';
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: env.app.corsOrigins, credentials: true }));
 app.use(morgan('dev'));
@@ -32,12 +34,27 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+const generalLimiter = rateLimit({
+  windowMs: env.rateLimit.windowMs,
+  max: env.rateLimit.max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || req.socket.remoteAddress || 'unknown',
+  skip: (req) => req.path === '/api/health',
   message: { success: false, message: 'Too many requests, please try again later' },
 });
-app.use('/api/', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: env.rateLimit.windowMs,
+  max: env.rateLimit.authMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || req.socket.remoteAddress || 'unknown',
+  message: { success: false, message: 'Too many auth attempts, please try again later' },
+});
+
+app.use('/api/auth', authLimiter);
+app.use('/api/', generalLimiter);
 
 app.get('/', (_req, res) => {
   res.json({ status: 'ok' });
