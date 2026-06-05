@@ -435,6 +435,9 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
         revenue: order.total,
         profit: totalProfit,
         status: order.status,
+        issued: order.issued ?? false,
+        issuedBy: order.issuedBy || null,
+        issuedAt: order.issuedAt?.toDate?.()?.toISOString() || null,
         date: order.createdAt.toDate().toISOString(),
       });
     }
