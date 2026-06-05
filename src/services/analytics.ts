@@ -88,11 +88,14 @@ export class AnalyticsService {
     }
 
     const snapshot = await db.collection(ORDERS_COLLECTION)
-      .where('createdAt', '>=', Timestamp.fromDate(startDate))
-      .orderBy('createdAt', 'asc')
+      .orderBy('createdAt', 'desc')
       .get();
 
-    const orders = snapshot.docs.map(d => d.data() as Order);
+    const orders = snapshot.docs.map(d => d.data() as Order)
+      .filter(o => {
+        const orderDate = o.createdAt.toDate();
+        return orderDate >= startDate;
+      });
 
     const dataPoints = intervals.map((intervalDate) => {
       let end: Date;
