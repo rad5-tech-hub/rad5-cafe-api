@@ -56,7 +56,7 @@ router.get('/history', authenticate, async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const result = await transferService.getTransferHistory(req.user!.userId, page, limit);
-    res.json({ success: true, ...result });
+    res.json({ success: true, transfers: result.transfers, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

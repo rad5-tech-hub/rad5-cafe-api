@@ -47,7 +47,7 @@ router.get('/audit-logs', authenticate, requireAdmin, async (req: Request, res: 
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);
     const result = await notificationService.getAuditLogs(page, limit);
-    res.json({ success: true, ...result });
+    res.json({ success: true, logs: result.logs, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -79,6 +79,7 @@ router.get('/user', authenticate, async (req: Request, res: Response) => {
       total: result.total,
       page,
       limit,
+      totalPages: Math.ceil(result.total / limit),
       notifications: formatted,
       data: formatted,
     });

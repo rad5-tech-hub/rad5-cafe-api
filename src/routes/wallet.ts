@@ -60,7 +60,7 @@ router.get('/transactions', authenticate, async (req: Request, res: Response) =>
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const result = await walletService.getTransactions(req.user!.userId, type, page, limit);
-    res.json({ success: true, ...result });
+    res.json({ success: true, transactions: result.transactions, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -71,7 +71,7 @@ router.get('/transactions/all', authenticate, async (req: Request, res: Response
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const result = await walletService.getTransactions(req.user!.userId, undefined, page, limit);
-    res.json({ success: true, ...result });
+    res.json({ success: true, transactions: result.transactions, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

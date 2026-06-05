@@ -86,7 +86,7 @@ router.get('/users', authenticate, requireAdmin, async (req: Request, res: Respo
     });
     const totalSnapshot = await db.collection(USERS_COLLECTION).count().get();
     const total = totalSnapshot.data().count;
-    res.json({ success: true, data: users, total, page, limit });
+    res.json({ success: true, data: users, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -98,7 +98,7 @@ router.get('/users/:id/payment-logs', authenticate, requireAdmin, async (req: Re
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);
     const result = await notificationService.getUserAuditLogs(userId, 'payment_finalized', page, limit);
-    res.json({ success: true, ...result });
+    res.json({ success: true, logs: result.logs, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

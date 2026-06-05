@@ -21,7 +21,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);
     const result = await productService.getAll(categoryId, search, page, limit);
-    res.json({ success: true, ...result });
+    res.json({ success: true, products: result.products, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

@@ -564,7 +564,7 @@ router.get('/sales/unissued', authenticateAdmin, async (req: Request, res: Respo
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
     const result = await orderService.getUnissuedOrders(page, limit);
-    res.json({ success: true, ...result });
+    res.json({ success: true, orders: result.orders, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
