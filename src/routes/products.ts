@@ -54,9 +54,9 @@ router.post('/', authenticate, requireAdmin, async (req: Request, res: Response)
 
 router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { name, categoryId, description, imageUrl, costPrice, sellingPrice, isActive } = req.body;
+    const { name, categoryId, description, imageUrl, costPrice, sellingPrice, lowStockThreshold, isActive } = req.body;
     await productService.update(req.params.id as string, {
-      name, categoryId, description, imageUrl, costPrice, sellingPrice, isActive,
+      name, categoryId, description, imageUrl, costPrice, sellingPrice, lowStockThreshold, isActive,
     });
     res.json({ success: true, message: 'Product updated' });
   } catch (error: any) {

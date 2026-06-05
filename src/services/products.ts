@@ -80,13 +80,17 @@ export class ProductService {
     imageUrl: string;
     costPrice: number;
     sellingPrice: number;
+    lowStockThreshold: number;
     isActive: boolean;
   }>): Promise<void> {
     const ref = db.collection(PRODUCTS_COLLECTION).doc(id);
     const doc = await ref.get();
     if (!doc.exists) throw new Error('Product not found');
 
-    const updateData: Record<string, unknown> = { ...data, updatedAt: Timestamp.now() };
+    const updateData: Record<string, unknown> = { updatedAt: Timestamp.now() };
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) updateData[key] = value;
+    }
 
     if (data.costPrice !== undefined || data.sellingPrice !== undefined) {
       const current = doc.data() as Product;

@@ -39,6 +39,10 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+app.get('/', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({
     success: true,
