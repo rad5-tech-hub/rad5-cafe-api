@@ -21,6 +21,7 @@ import adminRoutes from './routes/admin.js';
 import searchRoutes from './routes/search.js';
 import paymentsRoutes from './routes/payments.js';
 import adminDashboardRoutes from './routes/adminDashboard.js';
+import versionRoutes from './routes/version.js';
 import { errorHandler } from './middleware/error.js';
 
 const app = express();
@@ -82,6 +83,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/admin-dashboard', adminDashboardRoutes);
+app.use('/api/version', versionRoutes);
 
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',

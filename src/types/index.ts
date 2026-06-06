@@ -190,6 +190,16 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
   totalPages: number;
 }
 
+export interface AppVersion {
+  version: string;
+  versionCode: number;
+  apkLink: string;
+  releaseNotes?: string;
+  forceUpdate: boolean;
+  updatedAt: admin.firestore.Timestamp;
+  updatedBy: string;
+}
+
 export interface JwtPayload {
   userId: string;
   email: string;
