@@ -389,50 +389,68 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
 
-    let query = db.collection('orders') as FirebaseFirestore.Query;
-    query = query.orderBy('createdAt', 'desc');
-
     const now = new Date();
-    if (filter === 'daily') {
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      query = query.where('createdAt', '>=', Timestamp.fromDate(today));
-    } else if (filter === 'weekly') {
-      const weekly = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      query = query.where('createdAt', '>=', Timestamp.fromDate(weekly));
-    } else if (filter === 'monthly') {
-      const monthly = new Date(now.getFullYear(), now.getMonth(), 1);
-      query = query.where('createdAt', '>=', Timestamp.fromDate(monthly));
-    } else if (filter === 'custom') {
-      const start = req.query.startDate ? new Date(str(req.query.startDate)) : undefined;
-      const end = req.query.endDate ? new Date(str(req.query.endDate)) : undefined;
-      if (start) query = query.where('createdAt', '>=', Timestamp.fromDate(start));
-      if (end) query = query.where('createdAt', '<=', Timestamp.fromDate(end));
-    }
 
-    const countSnapshot = await query.count().get();
+    const buildQuery = (): FirebaseFirestore.Query => {
+      let q = db.collection('orders') as FirebaseFirestore.Query;
+      q = q.orderBy('createdAt', 'desc');
+
+      if (filter === 'daily') {
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        q = q.where('createdAt', '>=', Timestamp.fromDate(today));
+      } else if (filter === 'weekly') {
+        const weekly = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        q = q.where('createdAt', '>=', Timestamp.fromDate(weekly));
+      } else if (filter === 'monthly') {
+        const monthly = new Date(now.getFullYear(), now.getMonth(), 1);
+        q = q.where('createdAt', '>=', Timestamp.fromDate(monthly));
+      } else if (filter === 'custom') {
+        const start = req.query.startDate ? new Date(str(req.query.startDate)) : undefined;
+        const end = req.query.endDate ? new Date(str(req.query.endDate)) : undefined;
+        if (start) q = q.where('createdAt', '>=', Timestamp.fromDate(start));
+        if (end) q = q.where('createdAt', '<=', Timestamp.fromDate(end));
+      }
+      return q;
+    };
+
+    const aggregateQuery = buildQuery().select('total', 'items');
+    const pageQuery = buildQuery().offset((page - 1) * limit).limit(limit);
+
+    const [aggregateSnapshot, countSnapshot, pageSnapshot] = await Promise.all([
+      aggregateQuery.get(),
+      buildQuery().count().get(),
+      pageQuery.get(),
+    ]);
+
     const totalOrders = countSnapshot.data().count;
 
-    const allSnapshot = await query.select('total', 'items').get();
     let totalRevenue = 0;
     let totalProfit = 0;
-    for (const doc of allSnapshot.docs) {
+    for (const doc of aggregateSnapshot.docs) {
       const d = doc.data();
       totalRevenue += d.total || 0;
       totalProfit += (d.items || []).reduce((sum: number, item: any) =>
         sum + (item.unitPrice - item.costPrice) * item.quantity, 0);
     }
 
-    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
-    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+    const orders = pageSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+
+    const uniqueUserIds = [...new Set(orders.map(o => o.userId))];
+    const userDocs = uniqueUserIds.length > 0
+      ? await db.getAll(...uniqueUserIds.map(id => db.collection('users').doc(id)))
+      : [];
+
+    const userNameMap = new Map<string, string>();
+    for (const doc of userDocs) {
+      if (doc.exists) {
+        const userData = doc.data() as User;
+        userNameMap.set(doc.id, userData.fullName?.trim() || userData.email?.split('@')[0] || 'Unnamed Customer');
+      }
+    }
 
     const salesList = [];
     for (const order of orders) {
-      let customerName = 'Unknown';
-      const userDoc = await db.collection('users').doc(order.userId).get();
-      if (userDoc.exists) {
-        const userData = userDoc.data() as User;
-        customerName = userData.fullName?.trim() || userData.email?.split('@')[0] || 'Unnamed Customer';
-      }
+      const customerName = userNameMap.get(order.userId) || 'Unknown';
 
       const profit = order.items.reduce((sum, item) => 
         sum + (item.unitPrice - item.costPrice) * item.quantity, 0

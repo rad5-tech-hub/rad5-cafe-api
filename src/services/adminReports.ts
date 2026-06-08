@@ -18,16 +18,24 @@ export class AdminReportsService {
     const snapshot = await query.get();
     const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
 
+    const uniqueUserIds = [...new Set(orders.map(o => o.userId))];
+    const userDocs = uniqueUserIds.length > 0
+      ? await db.getAll(...uniqueUserIds.map(id => db.collection('users').doc(id)))
+      : [];
+
+    const userNameMap = new Map<string, string>();
+    for (const doc of userDocs) {
+      if (doc.exists) {
+        userNameMap.set(doc.id, (doc.data() as User).fullName || 'Unnamed Customer');
+      }
+    }
+
     const rows = [];
     let totalRevenue = 0;
     let totalProfit = 0;
 
     for (const order of orders) {
-      let customerName = 'Unknown';
-      const userDoc = await db.collection('users').doc(order.userId).get();
-      if (userDoc.exists) {
-        customerName = (userDoc.data() as User).fullName || 'Unnamed Customer';
-      }
+      const customerName = userNameMap.get(order.userId) || 'Unknown';
 
       const date = order.createdAt.toDate().toLocaleString();
       const items = order.items.map(i => `${i.productName} x${i.quantity}`).join(', ');
