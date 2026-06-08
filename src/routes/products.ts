@@ -55,7 +55,18 @@ router.post('/', authenticate, requireAdmin, async (req: Request, res: Response)
 router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, categoryId, description, imageUrl, costPrice, sellingPrice, lowStockThreshold, isActive } = req.body;
-    await productService.update(req.params.id as string, {
+    
+    // Handle common Postman testing mistake where ':id' is passed literally
+    let productId = req.params.id;
+    if (productId === ':id') {
+      productId = req.body.id || req.body.productId;
+      if (!productId) {
+        res.status(400).json({ success: false, message: 'Invalid product id. Please replace :id in the URL with the actual product ID, or provide it in the body.' });
+        return;
+      }
+    }
+    
+    await productService.update(productId.trim(), {
       name, categoryId, description, imageUrl, costPrice, sellingPrice, lowStockThreshold, isActive,
     });
     res.json({ success: true, message: 'Product updated' });
