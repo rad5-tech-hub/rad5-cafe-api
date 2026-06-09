@@ -164,10 +164,11 @@ export class ProductService {
   async getLowStockProducts(): Promise<Product[]> {
     const snapshot = await db.collection(PRODUCTS_COLLECTION)
       .where('isActive', '==', true)
-      .where('quantity', '<=', 10)
-      .orderBy('quantity', 'asc')
       .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+    return products
+      .filter(p => p.quantity > 0 && p.quantity <= (p.lowStockThreshold || 10))
+      .sort((a, b) => a.quantity - b.quantity);
   }
 
   async getStockHistory(productId: string): Promise<StockHistory[]> {
