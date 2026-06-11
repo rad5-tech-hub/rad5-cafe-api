@@ -174,12 +174,16 @@ export class ProductService {
       .sort((a, b) => a.quantity - b.quantity);
   }
 
-  async getStockHistory(productId: string): Promise<StockHistory[]> {
-    const snapshot = await db.collection(STOCK_HISTORY_COLLECTION)
+  async getStockHistory(productId: string, from?: FirebaseFirestore.Timestamp | null, to?: FirebaseFirestore.Timestamp | null): Promise<StockHistory[]> {
+    let query: FirebaseFirestore.Query = db.collection(STOCK_HISTORY_COLLECTION)
       .where('productId', '==', productId)
       .orderBy('createdAt', 'desc')
-      .limit(50)
-      .get();
+      .limit(50);
+
+    if (from) query = query.where('createdAt', '>=', from);
+    if (to) query = query.where('createdAt', '<=', to);
+
+    const snapshot = await query.get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockHistory));
   }
 
@@ -201,15 +205,17 @@ export class ProductService {
       const now = new Date();
       if (period === 'day') {
         from = Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+        to = Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999));
       } else if (period === 'month') {
         from = Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), 1));
+        to = Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999));
       } else if (period === 'year') {
         from = Timestamp.fromDate(new Date(now.getFullYear(), 0, 1));
+        to = Timestamp.fromDate(new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999));
       }
     }
 
     let ordersQuery: FirebaseFirestore.Query = db.collection('orders')
-      .where('status', '==', 'completed')
       .orderBy('createdAt', 'desc');
 
     if (from) ordersQuery = ordersQuery.where('createdAt', '>=', from);
@@ -221,6 +227,7 @@ export class ProductService {
 
     for (const doc of ordersSnapshot.docs) {
       const order = doc.data() as Order;
+      if (order.status !== 'completed') continue;
       const createdAt = (order.createdAt as FirebaseFirestore.Timestamp).toDate();
       for (const item of order.items) {
         if (item.productId === productId) {
@@ -259,7 +266,7 @@ export class ProductService {
     const totalRevenue = sales.reduce((sum, s) => sum + s.revenue, 0);
     const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
 
-    const stockHistory = await this.getStockHistory(productId);
+    const stockHistory = await this.getStockHistory(productId, from, to);
 
     return {
       product: {
