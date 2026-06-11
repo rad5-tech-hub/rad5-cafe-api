@@ -37,7 +37,13 @@ export class NotificationService {
       .get();
 
     if (!existingSnapshot.empty) {
-      return { id: existingSnapshot.docs[0].id, ...existingSnapshot.docs[0].data() } as InventoryAlert;
+      const docRef = existingSnapshot.docs[0].ref;
+      const updatedData = {
+        currentStock: product.quantity,
+        threshold: product.lowStockThreshold || 10,
+      };
+      await docRef.update(updatedData);
+      return { id: existingSnapshot.docs[0].id, ...existingSnapshot.docs[0].data(), ...updatedData } as InventoryAlert;
     }
 
     const ref = db.collection(INVENTORY_ALERTS_COLLECTION).doc();

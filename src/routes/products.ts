@@ -20,7 +20,9 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
     const search = str(req.query.search) || undefined;
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);
-    const result = await productService.getAll(categoryId, search, page, limit);
+    const isAdmin = req.user?.role === 'admin';
+    const includeInactive = isAdmin && req.query.includeInactive === 'true';
+    const result = await productService.getAll(categoryId, search, page, limit, includeInactive);
     res.json({ success: true, products: result.products, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -47,6 +49,20 @@ router.post('/', authenticate, requireAdmin, async (req: Request, res: Response)
       name, categoryId, description, imageUrl, costPrice, sellingPrice, quantity,
     });
     res.status(201).json({ success: true, message: 'Product created', data: product });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/check-stock', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ success: false, message: 'Please provide a non-empty array of product IDs' });
+      return;
+    }
+    const stockInfo = await productService.checkStock(ids as string[]);
+    res.json({ success: true, data: stockInfo });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

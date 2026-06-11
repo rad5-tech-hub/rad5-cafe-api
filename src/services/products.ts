@@ -40,9 +40,12 @@ export class ProductService {
     return { id: ref.id, ...productData } as unknown as Product;
   }
 
-  async getAll(categoryId?: string, search?: string, page: number = 1, limit: number = 50): Promise<{ products: Product[]; total: number }> {
-    let query = db.collection(PRODUCTS_COLLECTION)
-      .where('isActive', '==', true) as FirebaseFirestore.Query;
+  async getAll(categoryId?: string, search?: string, page: number = 1, limit: number = 50, includeInactive: boolean = false): Promise<{ products: Product[]; total: number }> {
+    let query = db.collection(PRODUCTS_COLLECTION) as FirebaseFirestore.Query;
+
+    if (!includeInactive) {
+      query = query.where('isActive', '==', true);
+    }
 
     if (categoryId) {
       query = query.where('categoryId', '==', categoryId);
@@ -178,6 +181,28 @@ export class ProductService {
       .limit(50)
       .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockHistory));
+  }
+
+  async checkStock(productIds: string[]): Promise<{ productId: string; name: string; inStock: boolean; quantity: number; lowStockThreshold: number }[]> {
+    if (!productIds.length) return [];
+
+    const snapshot = await db.collection(PRODUCTS_COLLECTION)
+      .where('isActive', '==', true)
+      .where('__name__', 'in', productIds)
+      .get();
+
+    const found = snapshot.docs.map(doc => {
+      const product = { id: doc.id, ...doc.data() } as Product;
+      return {
+        productId: doc.id,
+        name: product.name,
+        inStock: product.quantity > 0,
+        quantity: product.quantity,
+        lowStockThreshold: product.lowStockThreshold || 10,
+      };
+    });
+
+    return found;
   }
 }
 

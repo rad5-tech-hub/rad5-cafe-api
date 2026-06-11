@@ -200,6 +200,18 @@ export interface AppVersion {
   updatedBy: string;
 }
 
+export interface WebhookPayload {
+  id: string;
+  event: string;
+  provider: 'paystack' | 'flutterwave';
+  reference: string;
+  payload: Record<string, unknown>;
+  status: 'received' | 'processed' | 'error';
+  errorMessage?: string;
+  createdAt: admin.firestore.Timestamp;
+  processedAt?: admin.firestore.Timestamp;
+}
+
 export interface JwtPayload {
   userId: string;
   email: string;

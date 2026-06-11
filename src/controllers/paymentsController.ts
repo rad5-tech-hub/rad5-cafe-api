@@ -11,6 +11,7 @@ const PENDING_PURCHASES = 'pendingTokenPurchases';
 const APPLIED_PAYMENTS_LEDGER = 'appliedPayments';
 const TRANSACTIONS = 'transactions';
 const WALLETS = 'wallets';
+const WEBHOOK_PAYLOADS = 'webhook_payloads';
 
 const MIN_AMOUNT_KOBOS = 10000; // minimum ₦100
 
@@ -323,6 +324,7 @@ export async function initiatePayment(req: Request, res: Response): Promise<void
 // Expects raw body (express.raw middleware on the route)
 // =====================================================================
 export async function handleWebhook(req: Request, res: Response): Promise<void> {
+  let payloadRef: FirebaseFirestore.DocumentReference | null = null;
   try {
     const signature = req.headers['x-paystack-signature'] as string;
     if (!signature) {
@@ -339,12 +341,23 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
 
     const event = Buffer.isBuffer(req.body) ? parseRawJSON(req.body) : req.body;
     const eventType = event?.event as string | undefined;
+    payloadRef = db.collection(WEBHOOK_PAYLOADS).doc();
+    const webhookReference = (event?.data as Record<string, unknown>)?.reference as string | undefined;
+
+    await payloadRef.set({
+      event: eventType || 'unknown',
+      provider: 'paystack' as const,
+      reference: webhookReference || 'unknown',
+      payload: event ?? {},
+      status: 'received' as const,
+      createdAt: Timestamp.now(),
+    });
 
     void notificationService.logAudit({
       userId: 'system',
       action: 'webhook_received',
       resource: 'payments',
-      resourceId: (event?.data as Record<string, unknown>)?.reference as string || 'unknown',
+      resourceId: webhookReference || 'unknown',
       details: {
         eventType: eventType || 'unknown',
         ip: req.ip || '',
@@ -353,33 +366,38 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
     });
 
     if (eventType !== 'charge.success') {
+      await payloadRef.update({ status: 'processed', processedAt: Timestamp.now() });
       res.json({ success: true, message: `Event ${eventType || 'unknown'} acknowledged` });
       return;
     }
 
-    const data = event?.data as Record<string, unknown> | undefined;
-    const reference = data?.reference as string | undefined;
-
-    if (!reference) {
+    if (!webhookReference) {
+      await payloadRef.update({ status: 'error', errorMessage: 'Missing reference in webhook payload', processedAt: Timestamp.now() });
       res.status(400).json({ success: false, message: 'Missing reference in webhook payload' });
       return;
     }
 
-    const result = await finalizePaystackPayment(reference);
+    const result = await finalizePaystackPayment(webhookReference);
 
     if (!result.success) {
+      await payloadRef.update({ status: 'error', errorMessage: result.message || 'Failed to process payment', processedAt: Timestamp.now() });
       res.status(400).json({ success: false, message: result.message || 'Failed to process payment' });
       return;
     }
 
+    await payloadRef.update({ status: 'processed', processedAt: Timestamp.now() });
+
     res.json({
       success: true,
       message: result.alreadyApplied ? 'Payment already processed (idempotent)' : 'Payment processed successfully',
-      data: { reference, alreadyApplied: result.alreadyApplied, transactionId: result.transactionId },
+      data: { reference: webhookReference, alreadyApplied: result.alreadyApplied, transactionId: result.transactionId },
     });
   } catch (error: any) {
     // Always return 200 to Paystack webhooks to prevent retries
     console.error('Webhook error:', error.message);
+    try {
+      await payloadRef?.update({ status: 'error', errorMessage: error.message, processedAt: Timestamp.now() });
+    } catch (_) { /* ignore update error */ }
     res.status(200).json({ success: false, message: 'Webhook received but processing errored' });
   }
 }
