@@ -328,6 +328,35 @@ router.get('/inventory-tracking', authenticateAdmin, async (req: Request, res: R
   }
 });
 
+/**
+ * Product Analytics (sales, revenue, profit for a single product)
+ */
+router.get('/products/:id/analytics', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const productId = req.params.id as string;
+    const rawPeriod = (req.query.period as string) || 'this_month';
+
+    let period: 'day' | 'month' | 'year' | undefined;
+    if (rawPeriod === 'today' || rawPeriod === 'this_day') {
+      period = 'day';
+    } else if (rawPeriod === 'this_month') {
+      period = 'month';
+    } else if (rawPeriod === 'this_year') {
+      period = 'year';
+    } else {
+      period = rawPeriod as 'day' | 'month' | 'year';
+    }
+
+    const startDate = str(req.query.startDate) || undefined;
+    const endDate = str(req.query.endDate) || undefined;
+
+    const result = await productService.getHistory(productId, period, startDate, endDate);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 // ─── PRODUCT CATEGORIES ────────────────────────────────────────
 
 /**
