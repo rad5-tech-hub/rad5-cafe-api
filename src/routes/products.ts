@@ -114,6 +114,18 @@ router.get('/:id/stock-history', authenticate, requireAdmin, async (req: Request
   }
 });
 
+router.get('/:id/history', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const period = (req.query.period as 'day' | 'month' | 'year') || undefined;
+    const startDate = str(req.query.startDate) || undefined;
+    const endDate = str(req.query.endDate) || undefined;
+    const result = await productService.getHistory(req.params.id as string, period, startDate, endDate);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.get('/alerts/low-stock', authenticate, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const products = await productService.getLowStockProducts();

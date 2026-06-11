@@ -1,5 +1,5 @@
 import { db, Timestamp, FieldValue } from '../config/firebase.js';
-import { Product, StockHistory } from '../types/index.js';
+import { Product, StockHistory, Order } from '../types/index.js';
 import { calculateProfit } from '../utils/helpers.js';
 
 const PRODUCTS_COLLECTION = 'products';
@@ -181,6 +181,104 @@ export class ProductService {
       .limit(50)
       .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockHistory));
+  }
+
+  async getHistory(productId: string, period?: 'day' | 'month' | 'year', startDate?: string, endDate?: string): Promise<{
+    product: { id: string; name: string; currentStock: number; costPrice: number; sellingPrice: number; profitPerUnit: number };
+    salesByPeriod: { period: string; totalQuantity: number; totalRevenue: number; totalProfit: number; orderCount: number }[];
+    stockHistory: StockHistory[];
+    summary: { totalSold: number; totalRevenue: number; totalProfit: number; averageSellingPrice: number };
+  }> {
+    const product = await this.getById(productId);
+
+    let from: FirebaseFirestore.Timestamp | null = null;
+    let to: FirebaseFirestore.Timestamp | null = null;
+
+    if (startDate) from = Timestamp.fromDate(new Date(startDate));
+    if (endDate) to = Timestamp.fromDate(new Date(endDate));
+
+    if (!startDate && !endDate) {
+      const now = new Date();
+      if (period === 'day') {
+        from = Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+      } else if (period === 'month') {
+        from = Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), 1));
+      } else if (period === 'year') {
+        from = Timestamp.fromDate(new Date(now.getFullYear(), 0, 1));
+      }
+    }
+
+    let ordersQuery: FirebaseFirestore.Query = db.collection('orders')
+      .where('status', '==', 'completed')
+      .orderBy('createdAt', 'desc');
+
+    if (from) ordersQuery = ordersQuery.where('createdAt', '>=', from);
+    if (to) ordersQuery = ordersQuery.where('createdAt', '<=', to);
+
+    const ordersSnapshot = await ordersQuery.get();
+
+    const sales: { period: string; quantity: number; revenue: number; profit: number; date: Date }[] = [];
+
+    for (const doc of ordersSnapshot.docs) {
+      const order = doc.data() as Order;
+      const createdAt = (order.createdAt as FirebaseFirestore.Timestamp).toDate();
+      for (const item of order.items) {
+        if (item.productId === productId) {
+          const profit = (item.unitPrice - item.costPrice) * item.quantity;
+
+          let key: string;
+          if (period === 'month') {
+            key = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`;
+          } else if (period === 'year') {
+            key = `${createdAt.getFullYear()}`;
+          } else {
+            key = createdAt.toISOString().slice(0, 10);
+          }
+
+          sales.push({ period: key, quantity: item.quantity, revenue: item.totalPrice, profit, date: createdAt });
+        }
+      }
+    }
+
+    const periodMap: Record<string, { totalQuantity: number; totalRevenue: number; totalProfit: number; orderCount: number }> = {};
+    for (const s of sales) {
+      if (!periodMap[s.period]) {
+        periodMap[s.period] = { totalQuantity: 0, totalRevenue: 0, totalProfit: 0, orderCount: 0 };
+      }
+      periodMap[s.period].totalQuantity += s.quantity;
+      periodMap[s.period].totalRevenue += s.revenue;
+      periodMap[s.period].totalProfit += s.profit;
+      periodMap[s.period].orderCount += 1;
+    }
+
+    const salesByPeriod = Object.entries(periodMap)
+      .map(([period, data]) => ({ period, ...data }))
+      .sort((a, b) => b.period.localeCompare(a.period));
+
+    const totalSold = sales.reduce((sum, s) => sum + s.quantity, 0);
+    const totalRevenue = sales.reduce((sum, s) => sum + s.revenue, 0);
+    const totalProfit = sales.reduce((sum, s) => sum + s.profit, 0);
+
+    const stockHistory = await this.getStockHistory(productId);
+
+    return {
+      product: {
+        id: product.id,
+        name: product.name,
+        currentStock: product.quantity,
+        costPrice: product.costPrice,
+        sellingPrice: product.sellingPrice,
+        profitPerUnit: product.profitPerUnit,
+      },
+      salesByPeriod,
+      stockHistory,
+      summary: {
+        totalSold,
+        totalRevenue,
+        totalProfit,
+        averageSellingPrice: totalSold > 0 ? Math.round(totalRevenue / totalSold) : 0,
+      },
+    };
   }
 
   async checkStock(productIds: string[]): Promise<{ productId: string; name: string; inStock: boolean; quantity: number; lowStockThreshold: number }[]> {
