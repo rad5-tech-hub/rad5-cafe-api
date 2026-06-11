@@ -73,7 +73,7 @@ router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Respons
     const { name, categoryId, description, imageUrl, costPrice, sellingPrice, lowStockThreshold, isActive } = req.body;
     
     // Handle common Postman testing mistake where ':id' is passed literally
-    let productId = req.params.id;
+    let productId = req.params.id as string;
     if (productId === ':id') {
       productId = req.body.id || req.body.productId;
       if (!productId) {
