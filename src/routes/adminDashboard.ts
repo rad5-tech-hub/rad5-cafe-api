@@ -290,7 +290,6 @@ router.get('/inventory-tracking', authenticateAdmin, async (req: Request, res: R
     const limit = num(req.query.limit, 50);
 
     const snapshot = await db.collection('products')
-      .where('isActive', '==', true)
       .orderBy('name', 'asc')
       .offset((page - 1) * limit)
       .limit(limit)
@@ -309,10 +308,11 @@ router.get('/inventory-tracking', authenticateAdmin, async (req: Request, res: R
         totalSold: data.totalSold || 0,
         currentStock: data.quantity,
         remainingValue: data.quantity * data.costPrice,
+        isActive: data.isActive,
       };
     });
 
-    const countSnapshot = await db.collection('products').where('isActive', '==', true).count().get();
+    const countSnapshot = await db.collection('products').count().get();
     const total = countSnapshot.data().count;
 
     res.json({
