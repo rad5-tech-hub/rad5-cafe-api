@@ -105,6 +105,20 @@ router.post('/:id/restock', authenticate, requireAdmin, async (req: Request, res
   }
 });
 
+router.post('/:id/remove-stock', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { quantity, reason } = req.body;
+    if (!quantity || quantity <= 0) {
+      res.status(400).json({ success: false, message: 'Valid quantity required' });
+      return;
+    }
+    const product = await productService.removeStock(req.params.id as string, quantity, reason);
+    res.json({ success: true, message: 'Stock removed successfully', data: product });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.get('/:id/stock-history', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
     const history = await productService.getStockHistory(req.params.id as string);

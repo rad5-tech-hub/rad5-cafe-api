@@ -124,12 +124,13 @@ export interface Transfer {
 export interface StockHistory {
   id: string;
   productId: string;
-  type: 'added' | 'sold' | 'adjusted';
+  type: 'added' | 'sold' | 'adjusted' | 'removed';
   quantity: number;
   costPrice?: number;
   previousStock: number;
   newStock: number;
   reference: string;
+  reason?: string;
   createdAt: admin.firestore.Timestamp;
 }
 

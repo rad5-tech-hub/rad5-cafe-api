@@ -164,6 +164,43 @@ export class ProductService {
     });
   }
 
+  async removeStock(id: string, quantity: number, reason?: string): Promise<Product> {
+    if (quantity <= 0) throw new Error('Quantity must be positive');
+
+    const ref = db.collection(PRODUCTS_COLLECTION).doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) throw new Error('Product not found');
+
+    const product = doc.data() as Product;
+    if (product.quantity < quantity) {
+      throw new Error(`Cannot remove more stock than available. Current stock: ${product.quantity}, requested: ${quantity}`);
+    }
+
+    const oldStock = product.quantity;
+
+    await ref.update({
+      quantity: FieldValue.increment(-quantity),
+      totalAdded: FieldValue.increment(-quantity),
+      updatedAt: Timestamp.now(),
+    });
+
+    const historyEntry: Record<string, unknown> = {
+      productId: id,
+      type: 'removed',
+      quantity,
+      previousStock: oldStock,
+      newStock: oldStock - quantity,
+      reference: `MISENTRY-${Date.now()}`,
+      createdAt: Timestamp.now(),
+    };
+    if (reason) {
+      historyEntry.reason = reason;
+    }
+    await db.collection(STOCK_HISTORY_COLLECTION).add(historyEntry);
+
+    return this.getById(id);
+  }
+
   async getLowStockProducts(): Promise<Product[]> {
     const snapshot = await db.collection(PRODUCTS_COLLECTION)
       .where('isActive', '==', true)

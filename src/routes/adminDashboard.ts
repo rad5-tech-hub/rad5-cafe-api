@@ -282,6 +282,31 @@ router.post('/products/:id/restock', authenticateAdmin, async (req: Request, res
 });
 
 /**
+ * Remove Stock (Misentry Correction)
+ */
+router.post('/products/:id/remove-stock', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const { quantity, reason, pin } = req.body;
+    const productId = req.params.id as string;
+
+    if (quantity === undefined || Number(quantity) <= 0) {
+      res.status(400).json({ success: false, message: 'Valid quantity is required' });
+      return;
+    }
+
+    await verifyAdminPin(req.user!.userId, pin);
+
+    const product = await productService.removeStock(productId, Number(quantity), reason);
+
+    await logAudit(req.user!.userId, 'remove_stock', 'products', productId, { quantity: Number(quantity), reason }, req);
+
+    res.json({ success: true, message: 'Stock removed successfully', data: product });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * Inventory Tracking List
  */
 router.get('/inventory-tracking', authenticateAdmin, async (req: Request, res: Response) => {
