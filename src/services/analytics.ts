@@ -288,6 +288,84 @@ export class AnalyticsService {
     return { productProfit, dailyProfit, monthlyProfit, lifetimeProfit: monthlyProfit, totalOrders: totalOrderCount };
   }
 
+  async getDailyAnalytics(limit: number = 5) {
+    const end = new Date();
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const snapshot = await db.collection(ORDERS_COLLECTION)
+      .where('createdAt', '>=', Timestamp.fromDate(start))
+      .get();
+    
+    const orders = snapshot.docs.map(d => d.data() as Order);
+
+    let totalRevenue = 0;
+    let totalProfit = 0;
+    const salesCount = orders.length;
+
+    const hourBuckets = new Map<string, { revenue: number; profit: number; salesCount: number }>();
+    const productSales = new Map<string, { name: string; quantitySold: number; revenue: number; profit: number; marginPercent: number }>();
+
+    for (let i = 0; i < 24; i++) {
+      const hourStr = `${i.toString().padStart(2, '0')}:00`;
+      hourBuckets.set(hourStr, { revenue: 0, profit: 0, salesCount: 0 });
+    }
+
+    for (const order of orders) {
+      const orderDate = order.createdAt.toDate();
+      const hourStr = `${orderDate.getHours().toString().padStart(2, '0')}:00`;
+      const bucket = hourBuckets.get(hourStr) || { revenue: 0, profit: 0, salesCount: 0 };
+      
+      bucket.revenue += order.total || 0;
+      bucket.salesCount++;
+      totalRevenue += order.total || 0;
+
+      for (const item of order.items || []) {
+        const itemProfit = (item.unitPrice - item.costPrice) * item.quantity;
+        bucket.profit += itemProfit;
+        totalProfit += itemProfit;
+
+        const pData = productSales.get(item.productId) || { name: item.productName, quantitySold: 0, revenue: 0, profit: 0, marginPercent: 0 };
+        pData.quantitySold += item.quantity;
+        pData.revenue += item.totalPrice;
+        pData.profit += itemProfit;
+        pData.marginPercent = pData.revenue > 0 ? (pData.profit / pData.revenue) * 100 : 0;
+        productSales.set(item.productId, pData);
+      }
+      hourBuckets.set(hourStr, bucket);
+    }
+
+    const newUsersSnapshot = await db.collection(USERS_COLLECTION)
+      .where('createdAt', '>=', Timestamp.fromDate(start))
+      .count()
+      .get();
+
+    const topProducts = Array.from(productSales.values())
+      .sort((a, b) => b.quantitySold - a.quantitySold)
+      .slice(0, limit);
+      
+    const highestMarginProduct = Array.from(productSales.values())
+      .sort((a, b) => b.marginPercent - a.marginPercent)[0] || null;
+
+    let busiestHour = '';
+    let maxHourSales = -1;
+    const revenueByHour = [];
+    for (const [hour, data] of hourBuckets.entries()) {
+      if (data.salesCount > maxHourSales) {
+        maxHourSales = data.salesCount;
+        busiestHour = hour;
+      }
+      revenueByHour.push({ hour, ...data });
+    }
+
+    return {
+      period: { start: start.toISOString(), end: end.toISOString() },
+      summary: { totalRevenue, totalProfit, totalSalesCount: salesCount, newCustomers: newUsersSnapshot.data().count },
+      trend: { busiestHour, revenueByHour },
+      highlights: { topSellingProduct: topProducts[0] || null, highestMarginProduct, topProducts }
+    };
+  }
+
   async getWeeklyAnalytics(limit: number = 5) {
     const end = new Date();
     const start = new Date();

@@ -677,6 +677,19 @@ router.put('/sales/:id/issue', authenticateAdmin, async (req: Request, res: Resp
 // ─── REVENUE & PROFIT ANALYTICS ────────────────────────────────
 
 /**
+ * Daily Analytics
+ */
+router.get('/analytics/daily', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 5;
+    const data = await analyticsService.getDailyAnalytics(limit);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * Weekly Analytics
  */
 router.get('/analytics/weekly', authenticateAdmin, async (req: Request, res: Response) => {
