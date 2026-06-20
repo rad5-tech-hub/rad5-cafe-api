@@ -1,4 +1,6 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -56,6 +58,13 @@ const authLimiter = rateLimit({
 
 app.use('/api/auth', authLimiter);
 app.use('/api/', generalLimiter);
+
+// Ensure downloads directory exists
+const downloadsDir = path.join(process.cwd(), 'public', 'downloads');
+if (!fs.existsSync(downloadsDir)) {
+  fs.mkdirSync(downloadsDir, { recursive: true });
+}
+app.use('/downloads', express.static(downloadsDir));
 
 app.get('/', (_req, res) => {
   res.json({ status: 'ok' });

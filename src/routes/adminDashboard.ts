@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcryptjs from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
 import { db, Timestamp, FieldValue } from '../config/firebase.js';
 import { env } from '../config/env.js';
 import { authenticateAdmin } from '../middleware/adminAuth.js';
@@ -909,28 +911,32 @@ router.get('/reports/export', authenticateAdmin, async (req: Request, res: Respo
     }
 
     const filename = `${type}_report_${Date.now()}`;
+    const downloadsDir = path.join(process.cwd(), 'public', 'downloads');
+    let fileExt = format;
+    if (format === 'excel') fileExt = 'xlsx';
+
+    const fullFileName = `${filename}.${fileExt}`;
+    const filePath = path.join(downloadsDir, fullFileName);
+    const downloadUrl = `/downloads/${fullFileName}`;
 
     if (format === 'excel') {
       const buffer = await adminReportsService.generateExcel(type, startDate, endDate, userId);
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename=${filename}.xlsx`);
-      res.send(buffer);
+      fs.writeFileSync(filePath, buffer as any);
+      res.json({ success: true, downloadUrl });
       return;
     }
 
     if (format === 'csv') {
       const csvString = await adminReportsService.generateCsv(type, startDate, endDate, userId);
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=${filename}.csv`);
-      res.send(csvString);
+      fs.writeFileSync(filePath, csvString);
+      res.json({ success: true, downloadUrl });
       return;
     }
 
     if (format === 'pdf') {
       const buffer = await adminReportsService.generatePdf(type, startDate, endDate, userId);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=${filename}.pdf`);
-      res.send(buffer);
+      fs.writeFileSync(filePath, buffer);
+      res.json({ success: true, downloadUrl });
       return;
     }
   } catch (error: any) {
