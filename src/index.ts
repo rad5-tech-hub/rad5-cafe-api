@@ -68,8 +68,10 @@ const authLimiter = rateLimit({
 app.use('/api/auth', authLimiter);
 app.use('/api/', generalLimiter);
 
-// Ensure downloads directory exists
-const downloadsDir = path.join(process.cwd(), 'public', 'downloads');
+import os from 'os';
+
+// Ensure downloads directory exists in a writable location (/tmp on Vercel)
+const downloadsDir = path.join(os.tmpdir(), 'downloads');
 if (!fs.existsSync(downloadsDir)) {
   fs.mkdirSync(downloadsDir, { recursive: true });
 }

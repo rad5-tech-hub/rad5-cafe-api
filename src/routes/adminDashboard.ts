@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcryptjs from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { db, Timestamp, FieldValue } from '../config/firebase.js';
 import { env } from '../config/env.js';
 import { authenticateAdmin } from '../middleware/adminAuth.js';
@@ -911,7 +912,7 @@ router.get('/reports/export', authenticateAdmin, async (req: Request, res: Respo
     }
 
     const filename = `${type}_report_${Date.now()}`;
-    const downloadsDir = path.join(process.cwd(), 'public', 'downloads');
+    const downloadsDir = path.join(os.tmpdir(), 'downloads');
     let fileExt = format;
     if (format === 'excel') fileExt = 'xlsx';
 
