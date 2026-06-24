@@ -3,6 +3,7 @@ import { transferService } from '../services/transfers.js';
 import { authenticate } from '../middleware/auth.js';
 import { db } from '../config/firebase.js';
 import { User } from '../types/index.js';
+import { verifyPin } from '../utils/pin-hash.js';
 
 const USERS_COLLECTION = 'users';
 
@@ -10,9 +11,9 @@ const router = Router();
 
 router.post('/send', authenticate, async (req: Request, res: Response) => {
   try {
-    const { recipientWalletId, amount, description } = req.body;
-    if (!recipientWalletId || !amount) {
-      res.status(400).json({ success: false, message: 'Recipient wallet and amount are required' });
+    const { recipientWalletId, amount, description, pin } = req.body;
+    if (!recipientWalletId || !amount || !pin) {
+      res.status(400).json({ success: false, message: 'Recipient wallet, amount and transaction PIN are required' });
       return;
     }
 
@@ -22,6 +23,17 @@ router.post('/send', authenticate, async (req: Request, res: Response) => {
       return;
     }
     const user = userDoc.data() as User;
+
+    if (!user.pinSetup || !user.pin) {
+      res.status(400).json({ success: false, message: 'Transaction PIN is not set up. Please set up your PIN first.' });
+      return;
+    }
+
+    const pinValid = await verifyPin(pin, user.pin);
+    if (!pinValid) {
+      res.status(400).json({ success: false, message: 'Invalid transaction PIN' });
+      return;
+    }
 
     const result = await transferService.transfer(
       req.user!.userId,

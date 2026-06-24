@@ -96,6 +96,7 @@ export class OrderService {
         transaction.set(op.stockHistRef, {
           productId: op.item.productId,
           type: 'sold',
+          userId,
           quantity: op.item.quantity,
           previousStock: product.quantity,
           newStock: product.quantity - op.item.quantity,

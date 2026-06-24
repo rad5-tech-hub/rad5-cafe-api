@@ -124,7 +124,8 @@ export interface Transfer {
 export interface StockHistory {
   id: string;
   productId: string;
-  type: 'added' | 'sold' | 'adjusted' | 'removed';
+  type: 'added' | 'sold' | 'adjusted' | 'removed' | 'cancel_and_refund';
+  userId?: string;
   quantity: number;
   costPrice?: number;
   previousStock: number;

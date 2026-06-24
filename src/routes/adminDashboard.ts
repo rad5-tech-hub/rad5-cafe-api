@@ -14,7 +14,7 @@ import { analyticsService } from '../services/analytics.js';
 import { notificationService } from '../services/notifications.js';
 import { adminReportsService } from '../services/adminReports.js';
 import { hashPin, verifyPin } from '../utils/pin-hash.js';
-import { Product, Order, User, Category } from '../types/index.js';
+import { Product, Order, User, Category, Wallet, Transaction, AuditLog } from '../types/index.js';
 
 const router = Router();
 
@@ -597,7 +597,8 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
           });
           transaction.set(db.collection('stock_history').doc(), {
             productId: item.productId,
-            type: 'adjusted',
+            type: 'cancel_and_refund',
+            userId: order.userId,
             quantity: item.quantity,
             reference: `REFUND-${order.receiptNumber}`,
             createdAt: Timestamp.now(),
@@ -940,6 +941,255 @@ router.get('/reports/export', authenticateAdmin, async (req: Request, res: Respo
       res.json({ success: true, downloadUrl });
       return;
     }
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Trace Product Purchase History (daily, weekly, monthly, even by user)
+ */
+router.get('/products/purchase-history', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const productId = str(req.query.productId) || undefined;
+    const userId = str(req.query.userId) || undefined;
+    const period = (req.query.period as 'daily' | 'weekly' | 'monthly' | 'all') || 'all';
+    const startDate = str(req.query.startDate) || undefined;
+    const endDate = str(req.query.endDate) || undefined;
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+
+    const now = new Date();
+    let query = db.collection('orders') as FirebaseFirestore.Query;
+
+    if (userId) {
+      query = query.where('userId', '==', userId);
+    }
+
+    query = query.orderBy('createdAt', 'desc');
+
+    if (period === 'daily') {
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      query = query.where('createdAt', '>=', Timestamp.fromDate(startOfDay));
+    } else if (period === 'weekly') {
+      const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      query = query.where('createdAt', '>=', Timestamp.fromDate(startOfWeek));
+    } else if (period === 'monthly') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      query = query.where('createdAt', '>=', Timestamp.fromDate(startOfMonth));
+    }
+
+    if (startDate) {
+      query = query.where('createdAt', '>=', Timestamp.fromDate(new Date(startDate)));
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query = query.where('createdAt', '<=', Timestamp.fromDate(end));
+    }
+
+    const snapshot = await query.get();
+    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+
+    const purchaseHistory: any[] = [];
+    for (const order of orders) {
+      for (const item of order.items) {
+        if (productId && item.productId !== productId) {
+          continue;
+        }
+
+        purchaseHistory.push({
+          orderId: order.id,
+          receiptNumber: order.receiptNumber,
+          userId: order.userId,
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          costPrice: item.costPrice,
+          totalPrice: item.totalPrice,
+          status: order.status === 'cancelled' ? 'cancel_and_refund' : 'purchase',
+          createdAt: order.createdAt.toDate().toISOString(),
+        });
+      }
+    }
+
+    const uniqueUserIds = [...new Set(purchaseHistory.map(h => h.userId))];
+    const userDocs = uniqueUserIds.length > 0
+      ? await db.getAll(...uniqueUserIds.map(uid => db.collection('users').doc(uid)))
+      : [];
+
+    const userMap = new Map<string, any>();
+    for (const doc of userDocs) {
+      if (doc.exists) {
+        const userData = doc.data() as User;
+        userMap.set(doc.id, {
+          fullName: userData.fullName || 'Unnamed Customer',
+          email: userData.email,
+          phoneNumber: userData.phoneNumber,
+        });
+      }
+    }
+
+    for (const entry of purchaseHistory) {
+      entry.user = userMap.get(entry.userId) || { fullName: 'Unknown User', email: 'unknown@rad5.com.ng' };
+    }
+
+    const total = purchaseHistory.length;
+    const startIdx = (page - 1) * limit;
+    const paginatedData = purchaseHistory.slice(startIdx, startIdx + limit);
+
+    res.json({
+      success: true,
+      data: paginatedData,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Trace Customer User History (Orders, Transactions, Audit Logs combined timeline)
+ */
+router.get('/users/:id/history', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.id as string;
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+    const user = userDoc.data() as User;
+
+    // Get user wallet info if exists
+    let wallet = null;
+    if (user.walletId) {
+      const walletSnapshot = await db.collection('wallets')
+        .where('walletId', '==', user.walletId)
+        .limit(1)
+        .get();
+      if (!walletSnapshot.empty) {
+        wallet = { id: walletSnapshot.docs[0].id, ...walletSnapshot.docs[0].data() } as Wallet;
+      }
+    }
+
+    // Fetch orders, transactions and audit logs in parallel
+    const [ordersSnapshot, txnsSnapshot, logsSnapshot] = await Promise.all([
+      db.collection('orders')
+        .where('userId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .limit(200)
+        .get(),
+      db.collection('transactions')
+        .where('userId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .limit(200)
+        .get(),
+      db.collection('audit_logs')
+        .where('userId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .limit(200)
+        .get(),
+    ]);
+
+    const timeline: any[] = [];
+
+    // Add orders to timeline
+    ordersSnapshot.docs.forEach(doc => {
+      const order = doc.data() as Order;
+      timeline.push({
+        id: doc.id,
+        type: 'order',
+        title: order.status === 'cancelled' ? 'Order Cancelled' : 'Café Purchase',
+        description: `${order.status === 'cancelled' ? 'Cancelled and refunded order' : 'Completed order'} ${order.receiptNumber} containing ${order.items.map(i => `${i.productName} (x${i.quantity})`).join(', ')}`,
+        amount: order.status === 'cancelled' ? order.total : -order.total,
+        status: order.status,
+        reference: order.receiptNumber,
+        createdAt: order.createdAt.toDate().toISOString(),
+      });
+    });
+
+    // Add transactions to timeline
+    txnsSnapshot.docs.forEach(doc => {
+      const txn = doc.data() as Transaction;
+      // Skip duplicate purchase/refund logs if they are already represented by orders
+      if (txn.reference.startsWith('PUR-') || txn.reference.startsWith('REF-')) {
+        return;
+      }
+      timeline.push({
+        id: doc.id,
+        type: 'transaction',
+        title: txn.type === 'funding' ? 'Wallet Funded' : txn.type === 'withdrawal' ? 'Debit/Withdrawal' : txn.type === 'transfer_sent' ? 'Transfer Sent' : 'Transfer Received',
+        description: txn.description,
+        amount: txn.amount,
+        status: txn.status,
+        reference: txn.reference,
+        createdAt: txn.createdAt.toDate().toISOString(),
+      });
+    });
+
+    // Add audit logs to timeline
+    logsSnapshot.docs.forEach(doc => {
+      const log = doc.data() as AuditLog;
+      timeline.push({
+        id: doc.id,
+        type: 'audit_log',
+        title: log.action.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        description: `Admin action: ${log.action} on ${log.resource} (ID: ${log.resourceId})`,
+        details: log.details || {},
+        ip: log.ip || '',
+        createdAt: log.createdAt.toDate().toISOString(),
+      });
+    });
+
+    // Sort combined timeline by createdAt desc
+    timeline.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    const total = timeline.length;
+    const startIdx = (page - 1) * limit;
+    const paginatedTimeline = timeline.slice(startIdx, startIdx + limit);
+
+    // Calculate quick stats
+    const totalSpent = timeline
+      .filter(t => t.type === 'order' && t.status === 'completed')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+    const totalFunded = txnsSnapshot.docs
+      .map(doc => doc.data() as Transaction)
+      .filter(t => t.type === 'funding' && t.status === 'completed')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    res.json({
+      success: true,
+      user: {
+        id: userDoc.id,
+        fullName: user.fullName || 'Unnamed Customer',
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+        isActive: user.isActive,
+        createdAt: user.createdAt.toDate().toISOString(),
+      },
+      wallet,
+      stats: {
+        totalSpent,
+        totalFunded,
+        orderCount: ordersSnapshot.size,
+        transactionCount: txnsSnapshot.size,
+      },
+      timeline: paginatedTimeline,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
