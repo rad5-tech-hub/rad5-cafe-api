@@ -38,7 +38,7 @@ export interface Transaction {
   reference: string;
   description: string;
   status: 'pending' | 'completed' | 'failed';
-  paymentMethod?: 'paystack' | 'flutterwave' | 'wallet';
+  paymentMethod?: 'paystack' | 'flutterwave' | 'wallet' | 'cash';
   metadata?: Record<string, unknown>;
   createdAt: admin.firestore.Timestamp;
 }
@@ -75,10 +75,13 @@ export interface Order {
   receiptNumber: string;
   userId: string;
   walletId: string;
+  customerName?: string;
   items: OrderItem[];
   subtotal: number;
   total: number;
   status: 'pending' | 'completed' | 'cancelled';
+  paymentMethod?: 'wallet' | 'cash';
+  reconciliationStatus?: 'none' | 'limbo' | 'reconciled';
   issued: boolean;
   issuedAt?: admin.firestore.Timestamp;
   issuedBy?: string;

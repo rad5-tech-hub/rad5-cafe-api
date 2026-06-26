@@ -19,7 +19,9 @@ export class OrderService {
   async createOrder(
     userId: string,
     items: { productId: string; quantity: number }[],
-    pin: string
+    pin: string,
+    paymentMethod: 'wallet' | 'cash' = 'wallet',
+    customerName?: string
   ): Promise<{ order: Order; receipt: Receipt; balance: number }> {
     if (!items || items.length === 0) {
       throw new Error('Cart is empty');
@@ -29,8 +31,10 @@ export class OrderService {
     if (!userDoc.exists) throw new Error('User not found');
     const user = userDoc.data() as { fullName: string; walletId: string; pin: string };
 
-    const pinValid = await verifyPin(pin, user.pin);
-    if (!pinValid) throw new Error('Invalid PIN');
+    if (paymentMethod === 'wallet') {
+      const pinValid = await verifyPin(pin, user.pin);
+      if (!pinValid) throw new Error('Invalid PIN');
+    }
 
     const walletSnapshot = await db.collection(WALLETS_COLLECTION)
       .where('walletId', '==', user.walletId).limit(1).get();
@@ -60,7 +64,7 @@ export class OrderService {
       subtotal += orderItem.totalPrice;
     }
 
-    if (walletDoc.data()?.balance < subtotal) {
+    if (paymentMethod === 'wallet' && walletDoc.data()?.balance < subtotal) {
       throw new Error('Insufficient wallet balance');
     }
 
@@ -109,10 +113,13 @@ export class OrderService {
         receiptNumber,
         userId,
         walletId: user.walletId,
+        customerName: customerName || undefined,
         items: orderItems,
         subtotal,
         total: subtotal,
         status: 'completed',
+        paymentMethod,
+        reconciliationStatus: paymentMethod === 'cash' ? 'limbo' : 'none',
         issued: false,
         createdAt: Timestamp.now(),
       } as unknown as Partial<Order>);
@@ -129,25 +136,27 @@ export class OrderService {
         createdAt: Timestamp.now(),
       } as unknown as Partial<Receipt>);
 
-      transaction.set(txnRef, {
-        walletId: user.walletId,
-        userId,
-        type: 'purchase',
-        amount: -subtotal,
-        fee: 0,
-        reference: `PUR-${receiptNumber}`,
-        description: `Café purchase - ${receiptNumber}`,
-        status: 'completed',
-        paymentMethod: 'wallet',
-        metadata: { receiptNumber, orderId: orderRef.id, items: orderItems },
-        createdAt: Timestamp.now(),
-      } as unknown as Partial<Transaction>);
+      if (paymentMethod === 'wallet') {
+        transaction.set(txnRef, {
+          walletId: user.walletId,
+          userId,
+          type: 'purchase',
+          amount: -subtotal,
+          fee: 0,
+          reference: `PUR-${receiptNumber}`,
+          description: `Café purchase - ${receiptNumber}`,
+          status: 'completed',
+          paymentMethod: 'wallet',
+          metadata: { receiptNumber, orderId: orderRef.id, items: orderItems },
+          createdAt: Timestamp.now(),
+        } as unknown as Partial<Transaction>);
 
-      transaction.update(walletDoc.ref, {
-        balance: FieldValue.increment(-subtotal),
-        totalSpent: FieldValue.increment(subtotal),
-        updatedAt: Timestamp.now(),
-      });
+        transaction.update(walletDoc.ref, {
+          balance: FieldValue.increment(-subtotal),
+          totalSpent: FieldValue.increment(subtotal),
+          updatedAt: Timestamp.now(),
+        });
+      }
     });
 
     void expoPushService.sendToUser(
@@ -170,10 +179,13 @@ export class OrderService {
       receiptNumber,
       userId,
       walletId: user.walletId,
+      customerName: customerName || undefined,
       items: orderItems,
       subtotal,
       total: subtotal,
       status: 'completed' as const,
+      paymentMethod,
+      reconciliationStatus: paymentMethod === 'cash' ? 'limbo' : 'none',
       issued: false,
       createdAt: Timestamp.now(),
     } as unknown as Order;
@@ -270,6 +282,101 @@ export class OrderService {
     });
 
     return { ...order, issued: true, issuedAt: Timestamp.now(), issuedBy: adminUserId };
+  }
+  async getLimboOrders(page: number = 1, limit: number = 20): Promise<{ orders: Order[]; total: number }> {
+    const query = db.collection(ORDERS_COLLECTION)
+      .where('reconciliationStatus', '==', 'limbo')
+      .orderBy('createdAt', 'desc');
+
+    const countSnapshot = await query.count().get();
+    const total = countSnapshot.data().count;
+
+    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
+    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+
+    return { orders, total };
+  }
+
+  async reconcileLimboOrder(orderId: string, adminUserId: string, customerUserId: string): Promise<Order> {
+    const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+    
+    const userDoc = await db.collection(USERS_COLLECTION).doc(customerUserId).get();
+    if (!userDoc.exists) throw new Error('Customer user not found');
+    const user = userDoc.data() as { fullName: string; walletId: string };
+
+    const walletSnapshot = await db.collection(WALLETS_COLLECTION)
+      .where('walletId', '==', user.walletId).limit(1).get();
+    if (walletSnapshot.empty) throw new Error('Customer wallet not found');
+    const walletDoc = walletSnapshot.docs[0];
+
+    return await db.runTransaction(async (transaction) => {
+      const orderDoc = await transaction.get(orderRef);
+      if (!orderDoc.exists) throw new Error('Order not found');
+      const order = { id: orderDoc.id, ...orderDoc.data() } as Order;
+      
+      if (order.reconciliationStatus !== 'limbo') {
+        throw new Error('Order is not in limbo state');
+      }
+
+      const receiptNumber = order.receiptNumber;
+      const subtotal = order.subtotal;
+
+      const txnRef1 = db.collection(TRANSACTIONS_COLLECTION).doc();
+      const txnRef2 = db.collection(TRANSACTIONS_COLLECTION).doc();
+
+      transaction.set(txnRef1, {
+        walletId: user.walletId,
+        userId: customerUserId,
+        type: 'funding',
+        amount: subtotal,
+        fee: 0,
+        reference: `CASH-FUND-${receiptNumber}`,
+        description: `Manual cash reconciliation by admin`,
+        status: 'completed',
+        paymentMethod: 'cash',
+        createdAt: Timestamp.now(),
+      } as unknown as Partial<Transaction>);
+
+      transaction.set(txnRef2, {
+        walletId: user.walletId,
+        userId: customerUserId,
+        type: 'purchase',
+        amount: -subtotal,
+        fee: 0,
+        reference: `PUR-${receiptNumber}`,
+        description: `Café purchase (cash reconciled) - ${receiptNumber}`,
+        status: 'completed',
+        paymentMethod: 'wallet',
+        metadata: { receiptNumber, orderId: order.id, items: order.items },
+        createdAt: Timestamp.now(),
+      } as unknown as Partial<Transaction>);
+
+      transaction.update(walletDoc.ref, {
+        totalFunded: FieldValue.increment(subtotal),
+        totalSpent: FieldValue.increment(subtotal),
+        updatedAt: Timestamp.now(),
+      });
+
+      transaction.update(orderRef, {
+        reconciliationStatus: 'reconciled',
+        reconciledBy: adminUserId,
+        reconciledAt: Timestamp.now(),
+        userId: customerUserId,
+        walletId: user.walletId,
+      });
+
+      const receiptQuery = db.collection(RECEIPTS_COLLECTION).where('orderId', '==', order.id).limit(1);
+      const receiptSnapshot = await transaction.get(receiptQuery);
+      if (!receiptSnapshot.empty) {
+        transaction.update(receiptSnapshot.docs[0].ref, {
+          userId: customerUserId,
+          userName: user.fullName,
+          walletId: user.walletId,
+        });
+      }
+
+      return { ...order, reconciliationStatus: 'reconciled', userId: customerUserId, walletId: user.walletId };
+    });
   }
 }
 

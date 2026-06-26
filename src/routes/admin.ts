@@ -6,6 +6,7 @@ import { db } from '../config/firebase.js';
 import { Transaction, User } from '../types/index.js';
 import { promoteToAdmin, demoteFromAdmin } from '../utils/firebase-custom-claims.js';
 import { notificationService } from '../services/notifications.js';
+import { orderService } from '../services/orders.js';
 
 const USERS_COLLECTION = 'users';
 
@@ -18,6 +19,17 @@ function str(val: unknown): string {
 function num(val: unknown, defaultVal: number = 1): number {
   const n = parseInt(str(val), 10);
   return isNaN(n) ? defaultVal : n;
+}
+
+function logAudit(userId: string, action: string, resource: string, resourceId: string, details: Record<string, unknown>, req: Request): void {
+  void notificationService.logAudit({
+    userId,
+    action,
+    resource,
+    resourceId,
+    details,
+    ip: req.ip || '',
+  });
 }
 
 router.get('/sales', authenticate, requireAdmin, async (req: Request, res: Response) => {
@@ -114,6 +126,9 @@ router.put('/users/:id/toggle-status', authenticate, requireAdmin, async (req: R
     }
     const user = userDoc.data() as User;
     await userRef.update({ isActive: !user.isActive });
+    
+    logAudit(req.user!.userId, 'toggle_user_status', 'users', req.params.id as string, { isActive: !user.isActive }, req);
+
     res.json({ success: true, message: `User ${user.isActive ? 'deactivated' : 'activated'}` });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -154,7 +169,37 @@ router.put('/users/:id/role', authenticate, requireAdmin, async (req: Request, r
       await demoteFromAdmin(firebaseUid);
     }
 
+    logAudit(req.user!.userId, 'change_user_role', 'users', req.params.id as string, { newRole: role }, req);
+
     res.json({ success: true, message: `User role updated to ${role}` });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/orders/limbo', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+    const result = await orderService.getLimboOrders(page, limit);
+    res.json({ success: true, orders: result.orders, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/orders/:orderId/reconcile', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { customerUserId } = req.body;
+    if (!customerUserId) {
+      res.status(400).json({ success: false, message: 'customerUserId is required' });
+      return;
+    }
+    const result = await orderService.reconcileLimboOrder(req.params.orderId as string, req.user!.userId, customerUserId);
+
+    logAudit(req.user!.userId, 'reconcile_cash_order', 'orders', req.params.orderId as string, { customerUserId, receiptNumber: result.receiptNumber }, req);
+
+    res.json({ success: true, message: 'Order reconciled', data: result });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

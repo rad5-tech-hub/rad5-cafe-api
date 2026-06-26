@@ -31,8 +31,8 @@ async function verifyAdminPin(userId: string, pin: string): Promise<void> {
   if (!isMatch) throw new Error('Invalid transaction PIN');
 }
 
-async function logAudit(userId: string, action: string, resource: string, resourceId: string, details: Record<string, unknown>, req: Request): Promise<void> {
-  await notificationService.logAudit({
+function logAudit(userId: string, action: string, resource: string, resourceId: string, details: Record<string, unknown>, req: Request): void {
+  void notificationService.logAudit({
     userId,
     action,
     resource,
@@ -244,7 +244,7 @@ router.post('/products', authenticateAdmin, async (req: Request, res: Response) 
     });
 
     // Log Audit Trail
-    await logAudit(req.user!.userId, 'add_product', 'products', product.id, { product }, req);
+    void logAudit(req.user!.userId, 'add_product', 'products', product.id, { product }, req);
 
     res.status(201).json({ success: true, message: 'Product added successfully', data: product });
   } catch (error: any) {
@@ -276,7 +276,7 @@ router.post('/products/:id/restock', authenticateAdmin, async (req: Request, res
     if (newCostPrice !== undefined) {
       auditDetails.newCostPrice = Number(newCostPrice);
     }
-    await logAudit(req.user!.userId, 'restock_product', 'products', productId, auditDetails, req);
+    void logAudit(req.user!.userId, 'restock_product', 'products', productId, auditDetails, req);
 
     res.json({ success: true, message: 'Product restocked successfully', data: product });
   } catch (error: any) {
@@ -301,7 +301,7 @@ router.post('/products/:id/remove-stock', authenticateAdmin, async (req: Request
 
     const product = await productService.removeStock(productId, Number(quantity), reason);
 
-    await logAudit(req.user!.userId, 'remove_stock', 'products', productId, { quantity: Number(quantity), reason }, req);
+    void logAudit(req.user!.userId, 'remove_stock', 'products', productId, { quantity: Number(quantity), reason }, req);
 
     res.json({ success: true, message: 'Stock removed successfully', data: product });
   } catch (error: any) {
@@ -398,7 +398,7 @@ router.post('/categories', authenticateAdmin, async (req: Request, res: Response
       return;
     }
     const category = await categoryService.create(name, description);
-    await logAudit(req.user!.userId, 'create_category', 'categories', category.id, { name, description }, req);
+    void logAudit(req.user!.userId, 'create_category', 'categories', category.id, { name, description }, req);
     res.status(201).json({ success: true, message: 'Category created successfully', data: category });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -414,7 +414,7 @@ router.put('/categories/:id', authenticateAdmin, async (req: Request, res: Respo
     const categoryId = req.params.id as string;
 
     await categoryService.update(categoryId, { name, description, isActive });
-    await logAudit(req.user!.userId, 'edit_category', 'categories', categoryId, { name, description, isActive }, req);
+    void logAudit(req.user!.userId, 'edit_category', 'categories', categoryId, { name, description, isActive }, req);
     res.json({ success: true, message: 'Category updated successfully' });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -428,7 +428,7 @@ router.delete('/categories/:id', authenticateAdmin, async (req: Request, res: Re
   try {
     const categoryId = req.params.id as string;
     await categoryService.delete(categoryId);
-    await logAudit(req.user!.userId, 'delete_category', 'categories', categoryId, {}, req);
+    void logAudit(req.user!.userId, 'delete_category', 'categories', categoryId, {}, req);
     res.json({ success: true, message: 'Category deleted successfully' });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -641,7 +641,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
     }
 
     // Log Audit Trail
-    await logAudit(req.user!.userId, 'adjust_sale', 'orders', orderId, { oldStatus, newStatus: status }, req);
+    void logAudit(req.user!.userId, 'adjust_sale', 'orders', orderId, { oldStatus, newStatus: status }, req);
 
     res.json({ success: true, message: `Order status adjusted to ${status} successfully` });
   } catch (error: any) {
@@ -671,7 +671,7 @@ router.put('/sales/:id/issue', authenticateAdmin, async (req: Request, res: Resp
     const orderId = req.params.id as string;
     const order = await orderService.issueOrder(orderId, req.user!.userId);
 
-    await logAudit(req.user!.userId, 'issue_order', 'orders', orderId, {
+    void logAudit(req.user!.userId, 'issue_order', 'orders', orderId, {
       receiptNumber: order.receiptNumber,
       total: order.total,
     }, req);
@@ -885,7 +885,7 @@ router.post('/wallet/adjust', authenticateAdmin, async (req: Request, res: Respo
     });
 
     // Log Audit Trail
-    await logAudit(req.user!.userId, 'wallet_transaction', 'wallets', walletDoc.id, { userId, amount: amt, description }, req);
+    void logAudit(req.user!.userId, 'wallet_transaction', 'wallets', walletDoc.id, { userId, amount: amt, description }, req);
 
     res.json({ success: true, message: 'Wallet balance adjusted successfully', data: { balance: wallet.balance + amt } });
   } catch (error: any) {

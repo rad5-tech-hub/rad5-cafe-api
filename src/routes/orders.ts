@@ -15,12 +15,18 @@ function num(val: unknown, defaultVal: number = 1): number {
 
 router.post('/', authenticate, async (req: Request, res: Response) => {
   try {
-    const { items, pin } = req.body;
-    if (!items || !pin) {
-      res.status(400).json({ success: false, message: 'Items and PIN are required' });
+    const { items, pin, paymentMethod, customerName } = req.body;
+    const method = paymentMethod === 'cash' ? 'cash' : 'wallet';
+
+    if (!items || (method === 'wallet' && !pin)) {
+      res.status(400).json({ success: false, message: 'Items and PIN are required for wallet payments' });
       return;
     }
-    const result = await orderService.createOrder(req.user!.userId, items, pin);
+    if (method === 'cash' && !customerName) {
+      res.status(400).json({ success: false, message: 'Customer name is required for cash payments' });
+      return;
+    }
+    const result = await orderService.createOrder(req.user!.userId, items, pin || '', method, customerName);
     res.status(201).json({ success: true, message: 'Purchase successful', data: result });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -59,6 +65,44 @@ router.get('/receipt-by-number/:receiptNumber', authenticate, async (req: Reques
       return;
     }
     res.json({ success: true, data: receipt });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/batch', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { orders } = req.body;
+    if (!orders || !Array.isArray(orders)) {
+      res.status(400).json({ success: false, message: 'Orders array is required' });
+      return;
+    }
+
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < orders.length; i++) {
+      const { items, pin, paymentMethod, customerName } = orders[i];
+      const method = paymentMethod === 'cash' ? 'cash' : 'wallet';
+
+      if (!items || (method === 'wallet' && !pin)) {
+        errors.push({ index: i, message: 'Items and PIN are required for wallet payments' });
+        continue;
+      }
+      if (method === 'cash' && !customerName) {
+        errors.push({ index: i, message: 'Customer name is required for cash payments' });
+        continue;
+      }
+
+      try {
+        const result = await orderService.createOrder(req.user!.userId, items, pin || '', method, customerName);
+        results.push(result);
+      } catch (err: any) {
+        errors.push({ index: i, message: err.message });
+      }
+    }
+
+    res.status(201).json({ success: true, message: 'Batch processing completed', data: { results, errors } });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
