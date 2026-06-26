@@ -318,6 +318,11 @@ export class OrderService {
         throw new Error('Order is not in limbo state');
       }
 
+      // 1. ALL READS FIRST
+      const receiptQuery = db.collection(RECEIPTS_COLLECTION).where('orderId', '==', order.id).limit(1);
+      const receiptSnapshot = await transaction.get(receiptQuery);
+
+      // 2. ALL WRITES AFTER
       const receiptNumber = order.receiptNumber;
       const subtotal = order.subtotal;
 
@@ -365,8 +370,6 @@ export class OrderService {
         walletId: user.walletId,
       });
 
-      const receiptQuery = db.collection(RECEIPTS_COLLECTION).where('orderId', '==', order.id).limit(1);
-      const receiptSnapshot = await transaction.get(receiptQuery);
       if (!receiptSnapshot.empty) {
         transaction.update(receiptSnapshot.docs[0].ref, {
           userId: customerUserId,
