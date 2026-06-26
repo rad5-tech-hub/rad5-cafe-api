@@ -297,6 +297,45 @@ export class OrderService {
     return { orders, total };
   }
 
+  async getReconciledOrders(page: number = 1, limit: number = 20): Promise<{ orders: any[]; total: number }> {
+    const query = db.collection(ORDERS_COLLECTION)
+      .where('reconciliationStatus', '==', 'reconciled')
+      .orderBy('createdAt', 'desc');
+
+    const countSnapshot = await query.count().get();
+    const total = countSnapshot.data().count;
+
+    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
+    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+
+    // Fetch user details for admin and customer
+    const userIds = new Set<string>();
+    orders.forEach(order => {
+      if (order.userId) userIds.add(order.userId);
+      if (order.reconciledBy) userIds.add(order.reconciledBy);
+    });
+
+    const userMap: Record<string, { fullName: string; email: string }> = {};
+    if (userIds.size > 0) {
+      const userRefs = Array.from(userIds).map(id => db.collection(USERS_COLLECTION).doc(id));
+      const userDocs = await db.getAll(...userRefs);
+      userDocs.forEach(doc => {
+        if (doc.exists) {
+          const data = doc.data() as { fullName: string; email: string };
+          userMap[doc.id] = { fullName: data.fullName, email: data.email };
+        }
+      });
+    }
+
+    const enhancedOrders = orders.map(order => ({
+      ...order,
+      reconciledByName: order.reconciledBy && userMap[order.reconciledBy] ? userMap[order.reconciledBy].fullName : 'Unknown Admin',
+      customerAccountName: order.userId && userMap[order.userId] ? userMap[order.userId].fullName : 'Unknown Customer',
+    }));
+
+    return { orders: enhancedOrders, total };
+  }
+
   async reconcileLimboOrder(orderId: string, adminUserId: string, customerUserId: string): Promise<Order> {
     const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
     

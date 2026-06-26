@@ -188,6 +188,17 @@ router.get('/orders/limbo', authenticate, requireAdmin, async (req: Request, res
   }
 });
 
+router.get('/orders/reconciled', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+    const result = await orderService.getReconciledOrders(page, limit);
+    res.json({ success: true, orders: result.orders, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/orders/:orderId/reconcile', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { customerUserId } = req.body;
