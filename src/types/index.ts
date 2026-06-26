@@ -82,6 +82,8 @@ export interface Order {
   issued: boolean;
   issuedAt?: admin.firestore.Timestamp;
   issuedBy?: string;
+  cancelledBy?: string;
+  cancelledAt?: admin.firestore.Timestamp;
   createdAt: admin.firestore.Timestamp;
 }
 

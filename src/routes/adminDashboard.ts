@@ -524,6 +524,8 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
         issued: order.issued ?? false,
         issuedBy: order.issuedBy || null,
         issuedAt: order.issuedAt?.toDate?.()?.toISOString() || null,
+        cancelledBy: order.cancelledBy || null,
+        cancelledAt: order.cancelledAt?.toDate?.()?.toISOString() || null,
         date: order.createdAt.toDate().toISOString(),
       });
     }
@@ -629,6 +631,8 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
         // 4. Update order status
         transaction.update(orderRef, {
           status: 'cancelled',
+          cancelledBy: req.user!.userId,
+          cancelledAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
         });
       });
