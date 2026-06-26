@@ -326,30 +326,16 @@ export class OrderService {
       const receiptNumber = order.receiptNumber;
       const subtotal = order.subtotal;
 
-      const txnRef1 = db.collection(TRANSACTIONS_COLLECTION).doc();
-      const txnRef2 = db.collection(TRANSACTIONS_COLLECTION).doc();
+      const txnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
 
-      transaction.set(txnRef1, {
-        walletId: user.walletId,
-        userId: customerUserId,
-        type: 'funding',
-        amount: subtotal,
-        fee: 0,
-        reference: `CASH-FUND-${receiptNumber}`,
-        description: `Manual cash reconciliation by admin`,
-        status: 'completed',
-        paymentMethod: 'cash',
-        createdAt: Timestamp.now(),
-      } as unknown as Partial<Transaction>);
-
-      transaction.set(txnRef2, {
+      transaction.set(txnRef, {
         walletId: user.walletId,
         userId: customerUserId,
         type: 'purchase',
         amount: -subtotal,
         fee: 0,
         reference: `PUR-${receiptNumber}`,
-        description: `Café purchase (cash reconciled) - ${receiptNumber}`,
+        description: `Café purchase (reconciled from limbo) - ${receiptNumber}`,
         status: 'completed',
         paymentMethod: 'wallet',
         metadata: { receiptNumber, orderId: order.id, items: order.items },
@@ -357,7 +343,7 @@ export class OrderService {
       } as unknown as Partial<Transaction>);
 
       transaction.update(walletDoc.ref, {
-        totalFunded: FieldValue.increment(subtotal),
+        balance: FieldValue.increment(-subtotal),
         totalSpent: FieldValue.increment(subtotal),
         updatedAt: Timestamp.now(),
       });
