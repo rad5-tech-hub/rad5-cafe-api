@@ -841,8 +841,12 @@ router.post('/wallet/adjust', authenticateAdmin, async (req: Request, res: Respo
     // Verify Admin PIN
     await verifyAdminPin(req.user!.userId, pin);
 
-    // Get wallet
-    const walletSnapshot = await db.collection('wallets').where('userId', '==', userId).limit(1).get();
+    // Get wallet by userId or walletId
+    let walletSnapshot = await db.collection('wallets').where('userId', '==', userId).limit(1).get();
+    if (walletSnapshot.empty) {
+      walletSnapshot = await db.collection('wallets').where('walletId', '==', userId).limit(1).get();
+    }
+    
     if (walletSnapshot.empty) {
       res.status(404).json({ success: false, message: 'Customer wallet not found' });
       return;
