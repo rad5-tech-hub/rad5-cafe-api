@@ -25,6 +25,7 @@ export class AnalyticsService {
       activeUsersCountSnapshot,
       walletsSnapshot,
       txnsCountSnapshot,
+      expensesSnapshot,
     ] = await Promise.all([
       db.collection(ORDERS_COLLECTION)
         .where('createdAt', '>=', todayTimestamp)
@@ -39,6 +40,9 @@ export class AnalyticsService {
         .get(),
       db.collection(WALLETS_COLLECTION).get(),
       db.collection(TRANSACTIONS_COLLECTION).count().get(),
+      db.collection('expenses')
+        .where('date', '>=', todayTimestamp)
+        .get(),
     ]);
 
     const todayOrders = todayOrdersSnapshot.docs.map(d => d.data() as Order & { items?: Array<{ unitPrice: number; costPrice: number; quantity: number }> });
@@ -52,6 +56,15 @@ export class AnalyticsService {
         }
       }
     }
+
+    let todayExpenses = 0;
+    for (const doc of expensesSnapshot.docs) {
+      const exp = doc.data();
+      todayExpenses += exp.amount || 0;
+    }
+    todayRevenue -= todayExpenses;
+    todayProfit -= todayExpenses;
+
     const salesCount = todayOrders.length;
 
     const products = productsSnapshot.docs.map(d => d.data() as Product);

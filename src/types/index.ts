@@ -229,3 +229,12 @@ export interface JwtPayload {
   role: 'customer' | 'admin';
   walletId?: string;
 }
+
+export interface Expense {
+  id: string;
+  amount: number;
+  description: string;
+  date: admin.firestore.Timestamp;
+  createdBy: string;
+  createdAt: admin.firestore.Timestamp;
+}

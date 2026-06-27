@@ -1195,6 +1195,80 @@ router.get('/users/:id/history', authenticateAdmin, async (req: Request, res: Re
       timeline: paginatedTimeline,
       total,
       page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  });
+
+// ─── SALES LEDGER (EXPENSES) ──────────────────────────────────
+
+/**
+ * Add a business expense
+ */
+router.post('/sales-ledger/expenses', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const { amount, description, date, pin } = req.body;
+    
+    if (amount === undefined || !description || !date) {
+      res.status(400).json({ success: false, message: 'Amount, description, and date are required' });
+      return;
+    }
+
+    await verifyAdminPin(req.user!.userId, pin);
+
+    const expenseRef = db.collection('expenses').doc();
+    const expense = {
+      amount: Number(amount),
+      description,
+      date: Timestamp.fromDate(new Date(date)),
+      createdBy: req.user!.userId,
+      createdAt: Timestamp.now(),
+    };
+
+    await expenseRef.set(expense);
+
+    void logAudit(req.user!.userId, 'add_expense', 'expenses', expenseRef.id, expense, req);
+
+    res.status(201).json({ success: true, message: 'Expense added successfully', data: { id: expenseRef.id, ...expense } });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Get business expenses
+ */
+router.get('/sales-ledger/expenses', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+
+    const query = db.collection('expenses').orderBy('date', 'desc');
+
+    const [countSnapshot, pageSnapshot] = await Promise.all([
+      query.count().get(),
+      query.offset((page - 1) * limit).limit(limit).get(),
+    ]);
+
+    const total = countSnapshot.data().count;
+    const expenses = pageSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        date: data.date.toDate().toISOString(),
+        createdAt: data.createdAt.toDate().toISOString(),
+      };
+    });
+
+    res.json({
+      success: true,
+      data: expenses,
+      total,
+      page,
       limit,
       totalPages: Math.ceil(total / limit),
     });

@@ -406,6 +406,46 @@ export class OrderService {
       return { ...order, reconciliationStatus: 'reconciled', userId: customerUserId, walletId: user.walletId };
     });
   }
+
+  async getMostBoughtProduct(userId: string): Promise<Product | null> {
+    const snapshot = await db.collection(ORDERS_COLLECTION)
+      .where('userId', '==', userId)
+      .where('status', '==', 'completed')
+      .get();
+
+    if (snapshot.empty) return null;
+
+    const productCounts: Record<string, number> = {};
+
+    snapshot.docs.forEach(doc => {
+      const order = doc.data() as Order;
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          if (item.productId) {
+            productCounts[item.productId] = (productCounts[item.productId] || 0) + item.quantity;
+          }
+        });
+      }
+    });
+
+    let maxProductId: string | null = null;
+    let maxQuantity = 0;
+
+    for (const [productId, quantity] of Object.entries(productCounts)) {
+      if (quantity > maxQuantity) {
+        maxQuantity = quantity;
+        maxProductId = productId;
+      }
+    }
+
+    if (!maxProductId) return null;
+
+    try {
+      return await productService.getById(maxProductId);
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const orderService = new OrderService();

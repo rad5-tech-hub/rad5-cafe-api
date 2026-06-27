@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { productService } from '../services/products.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { orderService } from '../services/orders.js';
 
 const router = Router();
 
@@ -24,6 +25,15 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
     const includeInactive = isAdmin && req.query.includeInactive === 'true';
     const result = await productService.getAll(categoryId, search, page, limit, includeInactive);
     res.json({ success: true, products: result.products, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/most-bought', authenticate, async (req: Request, res: Response) => {
+  try {
+    const product = await orderService.getMostBoughtProduct(req.user!.userId);
+    res.json({ success: true, data: product });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
