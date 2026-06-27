@@ -407,6 +407,30 @@ export class OrderService {
     });
   }
 
+  async getUserProductFrequencies(userId: string): Promise<Record<string, number>> {
+    const snapshot = await db.collection(ORDERS_COLLECTION)
+      .where('userId', '==', userId)
+      .where('status', '==', 'completed')
+      .get();
+
+    const productCounts: Record<string, number> = {};
+
+    if (snapshot.empty) return productCounts;
+
+    snapshot.docs.forEach(doc => {
+      const order = doc.data() as Order;
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          if (item.productId) {
+            productCounts[item.productId] = (productCounts[item.productId] || 0) + item.quantity;
+          }
+        });
+      }
+    });
+
+    return productCounts;
+  }
+
   async getMostBoughtProduct(userId: string): Promise<Product | null> {
     const snapshot = await db.collection(ORDERS_COLLECTION)
       .where('userId', '==', userId)

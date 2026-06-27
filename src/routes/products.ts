@@ -23,7 +23,18 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
     const limit = num(req.query.limit, 50);
     const isAdmin = req.user?.role === 'admin';
     const includeInactive = isAdmin && req.query.includeInactive === 'true';
-    const result = await productService.getAll(categoryId, search, page, limit, includeInactive);
+    
+    let frequencies: Record<string, number> | undefined;
+    if (req.user && !isAdmin) {
+      frequencies = await orderService.getUserProductFrequencies(req.user.userId);
+    } else if (req.user && isAdmin) {
+      // Admins might prefer default alphabetical sorting unless specified otherwise
+      // But if we want it for admins too, we can just omit the !isAdmin check.
+      // Let's do it for all authenticated users to be safe and fulfill the prompt.
+      frequencies = await orderService.getUserProductFrequencies(req.user.userId);
+    }
+    
+    const result = await productService.getAll(categoryId, search, page, limit, includeInactive, frequencies);
     res.json({ success: true, products: result.products, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });

@@ -40,7 +40,7 @@ export class ProductService {
     return { id: ref.id, ...productData } as unknown as Product;
   }
 
-  async getAll(categoryId?: string, search?: string, page: number = 1, limit: number = 50, includeInactive: boolean = false): Promise<{ products: Product[]; total: number }> {
+  async getAll(categoryId?: string, search?: string, page: number = 1, limit: number = 50, includeInactive: boolean = false, userFrequencies?: Record<string, number>): Promise<{ products: Product[]; total: number }> {
     let query = db.collection(PRODUCTS_COLLECTION) as FirebaseFirestore.Query;
 
     if (!includeInactive) {
@@ -49,6 +49,32 @@ export class ProductService {
 
     if (categoryId) {
       query = query.where('categoryId', '==', categoryId);
+    }
+
+    if (userFrequencies && Object.keys(userFrequencies).length > 0) {
+      const snapshot = await query.get();
+      let products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+
+      if (search) {
+        const searchLower = search.toLowerCase();
+        products = products.filter(p =>
+          p.name.toLowerCase().includes(searchLower) ||
+          p.description.toLowerCase().includes(searchLower)
+        );
+      }
+
+      products.sort((a, b) => {
+        const freqA = userFrequencies[a.id] || 0;
+        const freqB = userFrequencies[b.id] || 0;
+        if (freqB !== freqA) {
+          return freqB - freqA;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+      const total = products.length;
+      products = products.slice((page - 1) * limit, page * limit);
+      return { products, total };
     }
 
     query = query.orderBy('name', 'asc');
