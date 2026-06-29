@@ -296,7 +296,29 @@ export class OrderService {
     const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
     const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
 
-    return { orders, total };
+    const userIds = new Set<string>();
+    orders.forEach(order => {
+      if (!order.userName && order.userId) userIds.add(order.userId);
+    });
+
+    const userMap: Record<string, { email: string }> = {};
+    if (userIds.size > 0) {
+      const userRefs = Array.from(userIds).map(id => db.collection(USERS_COLLECTION).doc(id));
+      const userDocs = await db.getAll(...userRefs);
+      userDocs.forEach(doc => {
+        if (doc.exists) {
+          const data = doc.data() as { email: string };
+          userMap[doc.id] = { email: data.email };
+        }
+      });
+    }
+
+    const enhancedOrders = orders.map(order => ({
+      ...order,
+      userName: order.userName || (order.userId && userMap[order.userId] ? userMap[order.userId].email : undefined),
+    }));
+
+    return { orders: enhancedOrders, total };
   }
 
   async getReconciledOrders(page: number = 1, limit: number = 20): Promise<{ orders: any[]; total: number }> {
