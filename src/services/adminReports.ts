@@ -35,6 +35,7 @@ export class AdminReportsService {
     let totalProfit = 0;
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
       const customerName = userNameMap.get(order.userId) || 'Unknown';
 
       const date = order.createdAt.toDate().toLocaleString();
@@ -115,6 +116,7 @@ export class AdminReportsService {
     let totalProfit = 0;
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
       const date = order.createdAt.toDate().toLocaleString();
       for (const item of order.items) {
         const revenue = item.totalPrice;

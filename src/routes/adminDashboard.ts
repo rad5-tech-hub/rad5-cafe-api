@@ -485,6 +485,7 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
     let totalProfit = 0;
     for (const doc of aggregateSnapshot.docs) {
       const d = doc.data();
+      if (d.reconciliationStatus === 'limbo') continue;
       totalRevenue += d.total || 0;
       totalProfit += (d.items || []).reduce((sum: number, item: any) =>
         sum + (item.unitPrice - item.costPrice) * item.quantity, 0);

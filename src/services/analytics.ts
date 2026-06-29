@@ -12,7 +12,7 @@ export class AnalyticsService {
     today: { revenue: number; profit: number; salesCount: number };
     inventory: { totalProducts: number; lowStock: number; outOfStock: number };
     customers: { total: number; active: number };
-    wallet: { totalValue: number; totalTransactions: number };
+    wallet: { totalValue: number; totalTransactions: number; unreconciledLimboTotal: number; unreconciledLimboCount: number };
   }> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -26,6 +26,7 @@ export class AnalyticsService {
       walletsSnapshot,
       txnsCountSnapshot,
       expensesSnapshot,
+      limboOrdersSnapshot,
     ] = await Promise.all([
       db.collection(ORDERS_COLLECTION)
         .where('createdAt', '>=', todayTimestamp)
@@ -43,12 +44,18 @@ export class AnalyticsService {
       db.collection('expenses')
         .where('date', '>=', todayTimestamp)
         .get(),
+      db.collection(ORDERS_COLLECTION)
+        .where('reconciliationStatus', '==', 'limbo')
+        .get(),
     ]);
 
     const todayOrders = todayOrdersSnapshot.docs.map(d => d.data() as Order & { items?: Array<{ unitPrice: number; costPrice: number; quantity: number }> });
     let todayRevenue = 0;
     let todayProfit = 0;
+    let salesCount = 0;
     for (const o of todayOrders) {
+      if (o.reconciliationStatus === 'limbo') continue;
+      salesCount++;
       todayRevenue += o.total || 0;
       if (o.items) {
         for (const item of o.items) {
@@ -64,8 +71,6 @@ export class AnalyticsService {
     }
     todayRevenue -= todayExpenses;
     todayProfit -= todayExpenses;
-
-    const salesCount = todayOrders.length;
 
     const products = productsSnapshot.docs.map(d => d.data() as Product);
     const totalProducts = products.length;
@@ -87,11 +92,18 @@ export class AnalyticsService {
 
     const totalTransactions = txnsCountSnapshot.data().count;
 
+    const limboOrders = limboOrdersSnapshot.docs.map(d => d.data() as Order);
+    let unreconciledLimboTotal = 0;
+    for (const o of limboOrders) {
+      unreconciledLimboTotal += o.total || 0;
+    }
+    const unreconciledLimboCount = limboOrders.length;
+
     return {
       today: { revenue: todayRevenue, profit: todayProfit, salesCount },
       inventory: { totalProducts, lowStock, outOfStock },
       customers: { total: totalUsers, active: activeUsers },
-      wallet: { totalValue, totalTransactions },
+      wallet: { totalValue, totalTransactions, unreconciledLimboTotal, unreconciledLimboCount },
     };
   }
 
@@ -124,6 +136,7 @@ export class AnalyticsService {
     const bucketMap = new Map<string, { revenue: number; profit: number; salesCount: number }>();
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
       const orderDate = order.createdAt.toDate();
       let key: string;
       if (period === 'daily') {
@@ -222,6 +235,7 @@ export class AnalyticsService {
 
     const userMap = new Map<string, { orderCount: number; totalSpent: number }>();
     for (const order of allOrders) {
+      if (order.reconciliationStatus === 'limbo') continue;
       const current = userMap.get(order.userId) || { orderCount: 0, totalSpent: 0 };
       current.orderCount++;
       current.totalSpent += order.total;
@@ -277,6 +291,7 @@ export class AnalyticsService {
     let monthlyProfit = 0;
 
     for (const order of allOrders) {
+      if (order.reconciliationStatus === 'limbo') continue;
       const orderDate = order.createdAt.toDate();
       for (const item of order.items || []) {
         const profit = (item.unitPrice - item.costPrice) * item.quantity;
@@ -314,7 +329,7 @@ export class AnalyticsService {
 
     let totalRevenue = 0;
     let totalProfit = 0;
-    const salesCount = orders.length;
+    let salesCount = 0;
 
     const hourBuckets = new Map<string, { revenue: number; profit: number; salesCount: number }>();
     const productSales = new Map<string, { name: string; quantitySold: number; revenue: number; profit: number; marginPercent: number }>();
@@ -325,6 +340,8 @@ export class AnalyticsService {
     }
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
+      salesCount++;
       const orderDate = order.createdAt.toDate();
       const hourStr = `${orderDate.getHours().toString().padStart(2, '0')}:00`;
       const bucket = hourBuckets.get(hourStr) || { revenue: 0, profit: 0, salesCount: 0 };
@@ -393,7 +410,7 @@ export class AnalyticsService {
 
     let totalRevenue = 0;
     let totalProfit = 0;
-    const salesCount = orders.length;
+    let salesCount = 0;
 
     const dayBuckets = new Map<string, { revenue: number; profit: number; salesCount: number }>();
     const productSales = new Map<string, { name: string; quantitySold: number; revenue: number; profit: number; marginPercent: number }>();
@@ -405,6 +422,8 @@ export class AnalyticsService {
     }
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
+      salesCount++;
       const dateKey = order.createdAt.toDate().toISOString().split('T')[0];
       const bucket = dayBuckets.get(dateKey) || { revenue: 0, profit: 0, salesCount: 0 };
       
@@ -473,6 +492,7 @@ export class AnalyticsService {
 
     let totalRevenue = 0;
     let totalProfit = 0;
+    let salesCount = 0;
 
     const weekBuckets = new Map<string, { revenue: number; profit: number; salesCount: number }>();
     for (let i = 1; i <= 5; i++) weekBuckets.set(`Week ${i}`, { revenue: 0, profit: 0, salesCount: 0 });
@@ -480,6 +500,8 @@ export class AnalyticsService {
     const userSpends = new Map<string, { userId: string; orderCount: number; totalSpent: number }>();
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
+      salesCount++;
       totalRevenue += order.total || 0;
       const orderDate = order.createdAt.toDate();
       const diffTime = Math.abs(orderDate.getTime() - start.getTime());
@@ -542,7 +564,7 @@ export class AnalyticsService {
 
     return {
       period: { start: start.toISOString(), end: end.toISOString() },
-      summary: { totalRevenue, totalProfit, totalSalesCount: orders.length, newCustomers: newUsersSnapshot.data().count },
+      summary: { totalRevenue, totalProfit, totalSalesCount: salesCount, newCustomers: newUsersSnapshot.data().count },
       trend: { revenueByWeek: Array.from(weekBuckets.entries()).map(([week, data]) => ({ week, ...data })) },
       highlights: { topCategories, topSpender }
     };
@@ -567,7 +589,10 @@ export class AnalyticsService {
     const pairCounts = new Map<string, { pair: string[], count: number, revenue: number }>();
     const productStats = new Map<string, { name: string; sold: number; revenue: number; profit: number }>();
 
+    let validSalesCount = 0;
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
+      validSalesCount++;
       totalRevenue += order.total || 0;
       
       const orderDate = order.createdAt.toDate();
@@ -616,7 +641,7 @@ export class AnalyticsService {
 
     const grossProfit = totalRevenue - totalCostOfGoods;
     const profitMarginPercent = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-    const averageOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
+    const averageOrderValue = validSalesCount > 0 ? totalRevenue / validSalesCount : 0;
 
     const walletsSnapshot = await db.collection(WALLETS_COLLECTION).get();
     const totalOutstandingLiability = walletsSnapshot.docs.reduce((sum, doc) => sum + ((doc.data().balance as number) || 0), 0);
@@ -700,7 +725,7 @@ export class AnalyticsService {
         totalActive,
         newVsReturning: { newCustomers, returningCustomers: userSpends.size - newCustomers },
         retentionMetrics: {
-          averageVisitsPerCustomer: userSpends.size > 0 ? orders.length / userSpends.size : 0,
+          averageVisitsPerCustomer: userSpends.size > 0 ? validSalesCount / userSpends.size : 0,
           customerLifetimeValueAvg: userSpends.size > 0 ? totalRevenue / userSpends.size : 0
         },
         topSpenders

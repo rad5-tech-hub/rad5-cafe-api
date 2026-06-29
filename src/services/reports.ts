@@ -48,6 +48,7 @@ export class ReportService {
     }
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
       const customerName = userNameMap.get(order.userId) || 'Unknown';
 
       const date = order.createdAt.toDate();
@@ -134,6 +135,7 @@ export class ReportService {
     const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
 
     for (const order of orders) {
+      if (order.reconciliationStatus === 'limbo') continue;
       const date = order.createdAt.toDate();
       for (const item of order.items) {
         sheet.addRow({
