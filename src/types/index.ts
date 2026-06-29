@@ -74,6 +74,7 @@ export interface Order {
   id: string;
   receiptNumber: string;
   userId: string;
+  userName?: string;
   walletId: string;
   customerName?: string;
   items: OrderItem[];

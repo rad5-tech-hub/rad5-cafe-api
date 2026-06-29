@@ -112,6 +112,7 @@ export class OrderService {
       transaction.set(orderRef, {
         receiptNumber,
         userId,
+        userName: user.fullName,
         walletId: user.walletId,
         customerName: customerName || null,
         items: orderItems,
@@ -178,6 +179,7 @@ export class OrderService {
       id: orderRef.id,
       receiptNumber,
       userId,
+      userName: user.fullName,
       walletId: user.walletId,
       customerName: customerName || null,
       items: orderItems,
