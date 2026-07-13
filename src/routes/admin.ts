@@ -7,6 +7,7 @@ import { Transaction, User } from '../types/index.js';
 import { promoteToAdmin, demoteFromAdmin } from '../utils/firebase-custom-claims.js';
 import { notificationService } from '../services/notifications.js';
 import { orderService } from '../services/orders.js';
+import { verifyPin } from '../utils/pin-hash.js';
 
 const USERS_COLLECTION = 'users';
 
@@ -30,6 +31,18 @@ function logAudit(userId: string, action: string, resource: string, resourceId: 
     details,
     ip: req.ip || '',
   });
+}
+
+async function verifyAdminPin(userId: string, pin: string): Promise<void> {
+  if (!pin) throw new Error('Transaction PIN is required');
+  const userDoc = await db.collection('users').doc(userId).get();
+  if (!userDoc.exists) throw new Error('Admin not found');
+  const user = userDoc.data() as User;
+  if (!user.pinSetup || !user.pin) {
+    throw new Error('Transaction PIN is not set up. Please set up your PIN first.');
+  }
+  const isMatch = await verifyPin(pin, user.pin);
+  if (!isMatch) throw new Error('Invalid transaction PIN');
 }
 
 router.get('/sales', authenticate, requireAdmin, async (req: Request, res: Response) => {
@@ -211,6 +224,30 @@ router.post('/orders/:orderId/reconcile', authenticate, requireAdmin, async (req
     logAudit(req.user!.userId, 'reconcile_cash_order', 'orders', req.params.orderId as string, { customerUserId, receiptNumber: result.receiptNumber }, req);
 
     res.json({ success: true, message: 'Order reconciled', data: result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/orders/:orderId', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { reason, pin } = req.body;
+    if (!reason) {
+      res.status(400).json({ success: false, message: 'Reason is required' });
+      return;
+    }
+    if (!pin) {
+      res.status(400).json({ success: false, message: 'Admin PIN is required' });
+      return;
+    }
+
+    await verifyAdminPin(req.user!.userId, pin);
+
+    const result = await orderService.deleteLimboOrder(req.params.orderId as string, req.user!.userId, reason);
+
+    logAudit(req.user!.userId, 'delete_cash_order', 'orders', req.params.orderId as string, { reason, receiptNumber: result.receiptNumber }, req);
+
+    res.json({ success: true, message: 'Order deleted successfully', data: result });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

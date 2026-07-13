@@ -431,6 +431,36 @@ export class OrderService {
     });
   }
 
+  async deleteLimboOrder(orderId: string, adminUserId: string, reason: string): Promise<Order> {
+    return await db.runTransaction(async (transaction) => {
+      const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+      const orderDoc = await transaction.get(orderRef);
+
+      if (!orderDoc.exists) {
+        throw new Error('Order not found');
+      }
+
+      const order = { id: orderDoc.id, ...orderDoc.data() } as Order;
+
+      if (order.reconciliationStatus !== 'limbo') {
+        throw new Error('Only limbo orders can be deleted');
+      }
+
+      const adminUserRef = db.collection(USERS_COLLECTION).doc(adminUserId);
+      const adminUserDoc = await transaction.get(adminUserRef);
+      const adminName = adminUserDoc.exists ? (adminUserDoc.data()?.fullName || 'Unknown Admin') : 'Unknown Admin';
+
+      transaction.update(orderRef, {
+        status: 'cancelled',
+        cancelledBy: adminName,
+        cancelledAt: Timestamp.now(),
+        cancelReason: reason,
+      });
+
+      return { ...order, status: 'cancelled', cancelledBy: adminName, cancelReason: reason };
+    });
+  }
+
   async getUserProductFrequencies(userId: string): Promise<Record<string, number>> {
     const snapshot = await db.collection(ORDERS_COLLECTION)
       .where('userId', '==', userId)

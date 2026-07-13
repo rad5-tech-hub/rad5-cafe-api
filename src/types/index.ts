@@ -92,6 +92,7 @@ export interface Order {
   issuedBy?: string;
   cancelledBy?: string;
   cancelledAt?: admin.firestore.Timestamp;
+  cancelReason?: string;
   createdAt: admin.firestore.Timestamp;
 }
 
