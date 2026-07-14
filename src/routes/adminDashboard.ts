@@ -745,6 +745,18 @@ router.get('/analytics/custom', authenticateAdmin, async (req: Request, res: Res
 });
 
 /**
+ * Accounting Overview
+ */
+router.get('/analytics/accounting', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const data = await analyticsService.getAccountingOverview();
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * Revenue Analytics Charts Data
  */
 router.get('/analytics/revenue', authenticateAdmin, async (req: Request, res: Response) => {
@@ -856,14 +868,23 @@ router.post('/wallet/adjust', authenticateAdmin, async (req: Request, res: Respo
     const wallet = walletDoc.data();
 
     const amt = Number(amount);
-    if (amt < 0 && wallet.balance < Math.abs(amt)) {
-      res.status(400).json({ success: false, message: `Insufficient wallet balance. Available: ₦${wallet.balance}` });
-      return;
-    }
 
     const txnRef = db.collection('transactions').doc();
 
     await db.runTransaction(async (transaction) => {
+      // Re-read wallet inside transaction to prevent race conditions
+      const walletTxnDoc = await transaction.get(walletDoc.ref);
+      if (!walletTxnDoc.exists) throw new Error('Wallet not found during transaction');
+      const currentWalletData = walletTxnDoc.data()!;
+      const currentBalance = currentWalletData.balance || 0;
+
+      if (amt < 0) {
+        const debitAmount = Math.abs(amt);
+        if (currentBalance >= 0 && currentBalance < debitAmount) {
+          throw new Error(`Insufficient wallet balance. Available: ₦${currentBalance}`);
+        }
+      }
+
       // 1. Update wallet balance
       transaction.update(walletDoc.ref, {
         balance: FieldValue.increment(amt),

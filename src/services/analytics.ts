@@ -732,6 +732,89 @@ export class AnalyticsService {
       }
     };
   }
+
+  async getAccountingOverview() {
+    const [productsSnapshot, ordersSnapshot] = await Promise.all([
+      db.collection(PRODUCTS_COLLECTION).get(),
+      db.collection(ORDERS_COLLECTION).get()
+    ]);
+
+    const productsData = productsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+    const ordersData = ordersSnapshot.docs.map(d => d.data() as Order);
+
+    const productAccountingMap = new Map<string, any>();
+
+    // Initialize all products
+    for (const p of productsData) {
+      const quantityAdded = p.totalAdded || p.quantity || 0;
+      const expectedRevenue = quantityAdded * (p.sellingPrice || 0);
+      const expectedProfit = quantityAdded * ((p.sellingPrice || 0) - (p.costPrice || 0));
+
+      productAccountingMap.set(p.id, {
+        productId: p.id,
+        productName: p.name,
+        quantityAdded,
+        expectedRevenue,
+        expectedProfit,
+        actualizedRevenue: 0,
+        actualizedProfit: 0,
+        limboQuantity: 0,
+        limboAmount: 0
+      });
+    }
+
+    // Process orders for actualized and limbo
+    for (const order of ordersData) {
+      if (order.status !== 'completed' && order.status !== 'pending') continue; // only count valid orders
+
+      const isLimbo = order.reconciliationStatus === 'limbo';
+
+      for (const item of order.items || []) {
+        const prodId = item.productId;
+        // Even if product was deleted, we might want to track it, but we'll focus on existing for simplicity, or create a stub.
+        if (!productAccountingMap.has(prodId)) {
+          productAccountingMap.set(prodId, {
+            productId: prodId,
+            productName: item.productName || 'Deleted Product',
+            quantityAdded: 0,
+            expectedRevenue: 0,
+            expectedProfit: 0,
+            actualizedRevenue: 0,
+            actualizedProfit: 0,
+            limboQuantity: 0,
+            limboAmount: 0
+          });
+        }
+
+        const entry = productAccountingMap.get(prodId);
+        if (isLimbo) {
+          entry.limboQuantity += item.quantity;
+          entry.limboAmount += item.totalPrice;
+        } else {
+          entry.actualizedRevenue += item.totalPrice;
+          entry.actualizedProfit += (item.unitPrice - item.costPrice) * item.quantity;
+        }
+      }
+    }
+
+    const details = Array.from(productAccountingMap.values());
+    const totals = details.reduce((acc, curr) => {
+      acc.expectedRevenue += curr.expectedRevenue;
+      acc.expectedProfit += curr.expectedProfit;
+      acc.actualizedRevenue += curr.actualizedRevenue;
+      acc.actualizedProfit += curr.actualizedProfit;
+      acc.limboAmount += curr.limboAmount;
+      return acc;
+    }, {
+      expectedRevenue: 0,
+      expectedProfit: 0,
+      actualizedRevenue: 0,
+      actualizedProfit: 0,
+      limboAmount: 0
+    });
+
+    return { totals, details };
+  }
 }
 
 export const analyticsService = new AnalyticsService();

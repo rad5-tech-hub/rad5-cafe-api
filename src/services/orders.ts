@@ -175,6 +175,19 @@ export class OrderService {
       data: { type: 'purchase_completed', receiptNumber, amount: subtotal, orderId: orderRef.id },
     });
 
+    db.collection(USERS_COLLECTION).where('role', '==', 'admin').get().then(adminSnapshot => {
+      const itemsStr = orderItems.map(i => `${i.quantity}x ${i.productName}`).join(', ');
+      const adminBody = `New order from ${user.fullName || 'Customer'}: ${itemsStr} (₦${subtotal.toLocaleString()})`;
+      adminSnapshot.forEach(adminDoc => {
+        void expoPushService.sendToUser(
+          adminDoc.id,
+          'New Order Placed',
+          adminBody,
+          { type: 'new_order', receiptNumber, amount: subtotal, orderId: orderRef.id },
+        );
+      });
+    }).catch(console.error);
+
     const order = {
       id: orderRef.id,
       receiptNumber,
@@ -384,10 +397,19 @@ export class OrderService {
       // 1. ALL READS FIRST
       const receiptQuery = db.collection(RECEIPTS_COLLECTION).where('orderId', '==', order.id).limit(1);
       const receiptSnapshot = await transaction.get(receiptQuery);
+      
+      const walletTxnDoc = await transaction.get(walletDoc.ref);
+      if (!walletTxnDoc.exists) throw new Error('Customer wallet not found during transaction');
+      const currentBalance = (walletTxnDoc.data()?.balance || 0) as number;
+
+      const subtotal = order.subtotal;
+
+      if (currentBalance >= 0 && currentBalance < subtotal) {
+        throw new Error(`Insufficient wallet balance. Customer balance: ₦${currentBalance.toLocaleString()}, required: ₦${subtotal.toLocaleString()}`);
+      }
 
       // 2. ALL WRITES AFTER
       const receiptNumber = order.receiptNumber;
-      const subtotal = order.subtotal;
 
       const txnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
 
@@ -429,6 +451,10 @@ export class OrderService {
 
       return { ...order, reconciliationStatus: 'reconciled', userId: customerUserId, walletId: user.walletId };
     });
+    
+    // Notifications for reconciliation
+    void notificationService.sendToUser(customerUserId, 'Order Reconciled', `Your cash order (${orderRef.id}) has been successfully reconciled.`);
+    void notificationService.sendToRole('admin', 'Cash Order Reconciled', `A cash order for ${user.fullName} has been reconciled.`);
   }
 
   async deleteLimboOrder(orderId: string, adminUserId: string, reason: string): Promise<Order> {
@@ -449,6 +475,29 @@ export class OrderService {
       const adminUserRef = db.collection(USERS_COLLECTION).doc(adminUserId);
       const adminUserDoc = await transaction.get(adminUserRef);
       const adminName = adminUserDoc.exists ? (adminUserDoc.data()?.fullName || 'Unknown Admin') : 'Unknown Admin';
+
+      // Restore inventory since the order is cancelled
+      if (order.items && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          if (item.productId && item.quantity > 0) {
+            const productRef = db.collection(PRODUCTS_COLLECTION).doc(item.productId);
+            transaction.update(productRef, {
+              quantity: FieldValue.increment(item.quantity),
+              totalSold: FieldValue.increment(-item.quantity),
+              updatedAt: Timestamp.now(),
+            });
+            const stockHistRef = db.collection(STOCK_HISTORY_COLLECTION).doc();
+            transaction.set(stockHistRef, {
+              productId: item.productId,
+              type: 'added',
+              userId: adminUserId,
+              quantity: item.quantity,
+              reference: `CANCEL-${order.receiptNumber}`,
+              createdAt: Timestamp.now(),
+            });
+          }
+        }
+      }
 
       transaction.update(orderRef, {
         status: 'cancelled',
