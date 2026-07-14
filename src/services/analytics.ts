@@ -9,7 +9,7 @@ const WALLETS_COLLECTION = 'wallets';
 
 export class AnalyticsService {
   async getDashboardStats(): Promise<{
-    today: { revenue: number; profit: number; salesCount: number };
+    today: { revenue: number; profit: number; salesCount: number; rewardsGiven: number };
     inventory: { totalProducts: number; lowStock: number; outOfStock: number };
     customers: { total: number; active: number };
     wallet: { totalValue: number; totalTransactions: number; unreconciledLimboTotal: number; unreconciledLimboCount: number };
@@ -27,6 +27,7 @@ export class AnalyticsService {
       txnsCountSnapshot,
       expensesSnapshot,
       limboOrdersSnapshot,
+      rewardsSnapshot,
     ] = await Promise.all([
       db.collection(ORDERS_COLLECTION)
         .where('createdAt', '>=', todayTimestamp)
@@ -46,6 +47,10 @@ export class AnalyticsService {
         .get(),
       db.collection(ORDERS_COLLECTION)
         .where('reconciliationStatus', '==', 'limbo')
+        .get(),
+      db.collection(TRANSACTIONS_COLLECTION)
+        .where('type', '==', 'reward')
+        .where('createdAt', '>=', todayTimestamp)
         .get(),
     ]);
 
@@ -69,8 +74,16 @@ export class AnalyticsService {
       const exp = doc.data();
       todayExpenses += exp.amount || 0;
     }
+    
+    let todayRewardsGiven = 0;
+    for (const doc of rewardsSnapshot.docs) {
+      const rw = doc.data();
+      todayRewardsGiven += rw.amount || 0;
+    }
+
     todayRevenue -= todayExpenses;
     todayProfit -= todayExpenses;
+    todayProfit -= todayRewardsGiven;
 
     const products = productsSnapshot.docs.map(d => d.data() as Product);
     const totalProducts = products.length;
@@ -100,7 +113,7 @@ export class AnalyticsService {
     const unreconciledLimboCount = limboOrders.length;
 
     return {
-      today: { revenue: todayRevenue, profit: todayProfit, salesCount },
+      today: { revenue: todayRevenue, profit: todayProfit, salesCount, rewardsGiven: todayRewardsGiven },
       inventory: { totalProducts, lowStock, outOfStock },
       customers: { total: totalUsers, active: activeUsers },
       wallet: { totalValue, totalTransactions, unreconciledLimboTotal, unreconciledLimboCount },
@@ -759,7 +772,9 @@ export class AnalyticsService {
         actualizedRevenue: 0,
         actualizedProfit: 0,
         limboQuantity: 0,
-        limboAmount: 0
+        limboAmount: 0,
+        sellingPrice: p.sellingPrice || 0,
+        costPrice: p.costPrice || 0
       });
     }
 
@@ -782,7 +797,9 @@ export class AnalyticsService {
             actualizedRevenue: 0,
             actualizedProfit: 0,
             limboQuantity: 0,
-            limboAmount: 0
+            limboAmount: 0,
+            sellingPrice: item.unitPrice || 0,
+            costPrice: item.costPrice || 0
           });
         }
 
@@ -814,6 +831,25 @@ export class AnalyticsService {
     });
 
     return { totals, details };
+  }
+
+  async getRewardsHistory(page: number = 1, limit: number = 50) {
+    const snapshot = await db.collection(TRANSACTIONS_COLLECTION)
+      .where('type', '==', 'reward')
+      .orderBy('createdAt', 'desc')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .get();
+      
+    const countSnapshot = await db.collection(TRANSACTIONS_COLLECTION)
+      .where('type', '==', 'reward')
+      .count()
+      .get();
+      
+    const rewards = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const total = countSnapshot.data().count;
+    
+    return { rewards, total, page, limit };
   }
 }
 

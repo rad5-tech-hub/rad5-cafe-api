@@ -28,6 +28,26 @@ router.get('/info', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+router.get('/rewards/total', authenticate, async (req: Request, res: Response) => {
+  try {
+    const total = await walletService.getTotalRewards(req.user!.userId);
+    res.json({ success: true, data: { total } });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/rewards/history', authenticate, async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const result = await walletService.getRewardHistory(req.user!.userId, page, limit);
+    res.json({ success: true, rewards: result.rewards, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/fund/initialize', authenticate, async (req: Request, res: Response) => {
   try {
     const { amount, provider } = req.body;

@@ -1,4 +1,5 @@
 import { db, Timestamp } from '../config/firebase.js';
+import crypto from 'crypto';
 import { User } from '../types/index.js';
 import { hashPin } from '../utils/pin-hash.js';
 import { sanitizeUserData } from '../utils/helpers.js';
@@ -26,7 +27,7 @@ export class AuthService {
     if (!userDoc.exists) throw new Error('User not found');
 
     const user = userDoc.data() as User;
-    const { verifyPin } = await import('../utils/pin-hash');
+    const { verifyPin } = await import('../utils/pin-hash.js');
     const isValid = await verifyPin(oldPin, user.pin || '');
     if (!isValid) throw new Error('Current PIN is incorrect');
 
@@ -37,7 +38,13 @@ export class AuthService {
   async getProfile(userId: string): Promise<Partial<User>> {
     const userDoc = await db.collection(USERS_COLLECTION).doc(userId).get();
     if (!userDoc.exists) throw new Error('User not found');
-    return sanitizeUserData({ id: userDoc.id, ...userDoc.data() }) as Partial<User>;
+    let data = userDoc.data() as User;
+    if (!data.referralCode) {
+      const referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      await db.collection(USERS_COLLECTION).doc(userId).update({ referralCode, updatedAt: Timestamp.now() });
+      data = { ...data, referralCode };
+    }
+    return sanitizeUserData(data as any) as Partial<User>;
   }
 
   async updateProfile(userId: string, data: Partial<{ fullName: string; phoneNumber: string }>): Promise<void> {
@@ -64,6 +71,31 @@ export class AuthService {
     }
     await db.collection(USERS_COLLECTION).doc(userId).update({
       expoPushToken: token,
+      updatedAt: Timestamp.now(),
+    });
+  }
+
+  async setReferral(userId: string, referralCode: string, method: 'auto' | 'manual'): Promise<void> {
+    const userRef = db.collection(USERS_COLLECTION).doc(userId);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) throw new Error('User not found');
+
+    const user = userDoc.data() as User;
+    if (user.referredBy) {
+      throw new Error('Referral code already set');
+    }
+    if (user.referralCode === referralCode) {
+      throw new Error('Cannot use your own referral code');
+    }
+
+    const referrerSnapshot = await db.collection(USERS_COLLECTION).where('referralCode', '==', referralCode).limit(1).get();
+    if (referrerSnapshot.empty) {
+      throw new Error('Invalid referral code');
+    }
+
+    await userRef.update({
+      referredBy: referralCode,
+      referralMethod: method,
       updatedAt: Timestamp.now(),
     });
   }

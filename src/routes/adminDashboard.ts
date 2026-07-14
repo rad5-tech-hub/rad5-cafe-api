@@ -214,6 +214,20 @@ router.get('/overview', authenticateAdmin, async (req: Request, res: Response) =
   }
 });
 
+/**
+ * Rewards History
+ */
+router.get('/rewards', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const rewards = await analyticsService.getRewardsHistory(page, limit);
+    res.json({ success: true, ...rewards, totalPages: Math.ceil(rewards.total / limit) });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 // ─── INVENTORY MANAGEMENT ──────────────────────────────────────
 
 /**
@@ -636,6 +650,21 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
           cancelledAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
         });
+      });
+      
+      const { expoPushService } = await import('../services/expo-push.js');
+      const { notificationService } = await import('../services/notifications.js');
+      void expoPushService.sendToUser(
+        order.userId,
+        'Order Cancelled',
+        `Your order ${order.receiptNumber} has been cancelled and ₦${order.total.toLocaleString()} was refunded to your wallet.`,
+        { type: 'order_cancelled', orderId }
+      );
+      void notificationService.createUserNotification({
+        userId: order.userId,
+        type: 'info',
+        title: 'Order Cancelled',
+        body: `Your order ${order.receiptNumber} has been cancelled and ₦${order.total.toLocaleString()} was refunded to your wallet.`,
       });
     } else {
       await orderRef.update({ status, updatedAt: Timestamp.now() });

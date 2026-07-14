@@ -1,5 +1,5 @@
 import { db, Timestamp, FieldValue } from '../config/firebase.js';
-import { Order, OrderItem, Receipt, Transaction, Product } from '../types/index.js';
+import { Order, OrderItem, Receipt, Transaction, Product, User } from '../types/index.js';
 import { generateReceiptNumber, getNextId } from '../utils/id-generator.js';
 import { productService } from './products.js';
 import { walletService } from './wallet.js';
@@ -21,7 +21,8 @@ export class OrderService {
     items: { productId: string; quantity: number }[],
     pin: string,
     paymentMethod: 'wallet' | 'cash' = 'wallet',
-    customerName?: string
+    customerName?: string,
+    source: 'web' | 'mobile' = 'web'
   ): Promise<{ order: Order; receipt: Receipt; balance: number }> {
     if (!items || items.length === 0) {
       throw new Error('Cart is empty');
@@ -43,6 +44,7 @@ export class OrderService {
 
     const orderItems: OrderItem[] = [];
     let subtotal = 0;
+    let totalProfit = 0;
 
     for (const item of items) {
       const product = await productService.getById(item.productId);
@@ -62,6 +64,7 @@ export class OrderService {
 
       orderItems.push(orderItem);
       subtotal += orderItem.totalPrice;
+      totalProfit += (product.sellingPrice - product.costPrice) * item.quantity;
     }
 
     if (paymentMethod === 'wallet' && walletDoc.data()?.balance < subtotal) {
@@ -79,6 +82,23 @@ export class OrderService {
       const stockHistRef = db.collection(STOCK_HISTORY_COLLECTION).doc();
       return { productRef, stockHistRef, item };
     });
+
+    // Pre-fetch referrer data if needed to avoid queries inside the transaction
+    let referrerDocRef: FirebaseFirestore.DocumentReference | null = null;
+    let referrerWalletRef: FirebaseFirestore.DocumentReference | null = null;
+    let txUserObj = user as User;
+    if (!txUserObj.hasMadeFirstPurchase && txUserObj.referredBy) {
+      const refUserSnap = await db.collection(USERS_COLLECTION).where('referralCode', '==', txUserObj.referredBy).limit(1).get();
+      if (!refUserSnap.empty) {
+        referrerDocRef = refUserSnap.docs[0].ref;
+        const refWalletSnap = await db.collection(WALLETS_COLLECTION).where('userId', '==', refUserSnap.docs[0].id).limit(1).get();
+        if (!refWalletSnap.empty) {
+          referrerWalletRef = refWalletSnap.docs[0].ref;
+        }
+      }
+    }
+
+    const rewardNotifications: { userId: string, title: string, body: string, data: any }[] = [];
 
     await db.runTransaction(async (transaction) => {
       const productDocs: { op: typeof stockUpdateOps[0]; product: Product }[] = [];
@@ -106,6 +126,96 @@ export class OrderService {
           newStock: product.quantity - op.item.quantity,
           reference: receiptNumber,
           createdAt: Timestamp.now(),
+        });
+      }
+
+      const txUserDoc = await transaction.get(db.collection(USERS_COLLECTION).doc(userId));
+      const txUser = txUserDoc.data() as User;
+      const isFirstPurchase = !txUser.hasMadeFirstPurchase;
+      
+      let txReferrerUser = null;
+      if (isFirstPurchase && txUser.referredBy && referrerDocRef && referrerWalletRef) {
+         const refUserDoc = await transaction.get(referrerDocRef);
+         txReferrerUser = refUserDoc.data() as User;
+      }
+
+      if (isFirstPurchase) {
+        transaction.update(txUserDoc.ref, { hasMadeFirstPurchase: true, updatedAt: Timestamp.now() });
+      }
+
+      let buyerReward = 0;
+      let referrerReward = 0;
+      
+      if (isFirstPurchase && txUser.referredBy && txReferrerUser && referrerWalletRef) {
+        if (txUser.referralMethod === 'manual') {
+          referrerReward = totalProfit * 0.025;
+          buyerReward = totalProfit * 0.025;
+        } else {
+          referrerReward = totalProfit * 0.05;
+        }
+        
+        if (referrerReward > 0) {
+          transaction.update(referrerWalletRef, {
+            balance: FieldValue.increment(referrerReward),
+            updatedAt: Timestamp.now()
+          });
+          const refTxnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
+          transaction.set(refTxnRef, {
+            walletId: txReferrerUser.walletId,
+            userId: referrerDocRef!.id,
+            type: 'reward',
+            amount: referrerReward,
+            fee: 0,
+            reference: `REF-${receiptNumber}`,
+            description: `Referral bonus from ${txUser.fullName || 'User'}`,
+            status: 'completed',
+            createdAt: Timestamp.now(),
+          } as unknown as Partial<Transaction>);
+          
+          rewardNotifications.push({
+            userId: referrerDocRef!.id,
+            title: 'Referral Bonus',
+            body: `You received ₦${referrerReward.toLocaleString()} from your referral's first purchase!`,
+            data: { type: 'reward', amount: referrerReward }
+          });
+        }
+      } else if (!isFirstPurchase || !txUser.referredBy) {
+        buyerReward = source === 'mobile' ? totalProfit * 0.05 : totalProfit * 0.03;
+      }
+      
+      let walletUpdate: any = {};
+      if (paymentMethod === 'wallet') {
+        walletUpdate.balance = FieldValue.increment(-subtotal);
+        walletUpdate.totalSpent = FieldValue.increment(subtotal);
+        walletUpdate.updatedAt = Timestamp.now();
+      }
+      if (buyerReward > 0) {
+        walletUpdate.balance = walletUpdate.balance ? FieldValue.increment(-subtotal + buyerReward) : FieldValue.increment(buyerReward);
+        walletUpdate.updatedAt = Timestamp.now();
+      }
+      if (Object.keys(walletUpdate).length > 0) {
+        transaction.update(walletDoc.ref, walletUpdate);
+      }
+
+      if (buyerReward > 0) {
+        const buyerTxnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
+        transaction.set(buyerTxnRef, {
+          walletId: user.walletId,
+          userId,
+          type: 'reward',
+          amount: buyerReward,
+          fee: 0,
+          reference: `CB-${receiptNumber}`,
+          description: `Platform usage cashback`,
+          status: 'completed',
+          createdAt: Timestamp.now(),
+        } as unknown as Partial<Transaction>);
+
+        rewardNotifications.push({
+          userId: userId,
+          title: 'Cashback Earned',
+          body: `You earned ₦${buyerReward.toLocaleString()} cashback on your purchase!`,
+          data: { type: 'reward', amount: buyerReward }
         });
       }
 
@@ -151,14 +261,19 @@ export class OrderService {
           metadata: { receiptNumber, orderId: orderRef.id, items: orderItems },
           createdAt: Timestamp.now(),
         } as unknown as Partial<Transaction>);
-
-        transaction.update(walletDoc.ref, {
-          balance: FieldValue.increment(-subtotal),
-          totalSpent: FieldValue.increment(subtotal),
-          updatedAt: Timestamp.now(),
-        });
       }
     });
+
+    for (const notif of rewardNotifications) {
+      void expoPushService.sendToUser(notif.userId, notif.title, notif.body, notif.data);
+      void notificationService.createUserNotification({
+        userId: notif.userId,
+        type: 'info',
+        title: notif.title,
+        body: notif.body,
+        data: notif.data,
+      });
+    }
 
     void expoPushService.sendToUser(
       userId,
@@ -295,6 +410,13 @@ export class OrderService {
       issuedAt: Timestamp.now(),
       issuedBy: adminUserId,
     });
+
+    void expoPushService.sendToUser(
+      order.userId,
+      'Order Issued',
+      `Your order ${order.receiptNumber} has been issued and is ready!`,
+      { type: 'order_issued', orderId }
+    );
 
     return { ...order, issued: true, issuedAt: Timestamp.now(), issuedBy: adminUserId };
   }

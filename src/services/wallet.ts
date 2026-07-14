@@ -192,6 +192,26 @@ export class WalletService {
     const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
     return { transactions, total };
   }
+
+  async getTotalRewards(userId: string): Promise<number> {
+    const wallet = await this.getWallet(userId);
+    const snapshot = await db.collection(TRANSACTIONS_COLLECTION)
+      .where('walletId', '==', wallet.walletId)
+      .where('type', '==', 'reward')
+      .get();
+      
+    let total = 0;
+    for (const doc of snapshot.docs) {
+      const data = doc.data() as Transaction;
+      total += data.amount;
+    }
+    return total;
+  }
+  
+  async getRewardHistory(userId: string, page: number = 1, limit: number = 20): Promise<{ rewards: Transaction[]; total: number }> {
+    const res = await this.getTransactions(userId, 'reward', page, limit);
+    return { rewards: res.transactions, total: res.total };
+  }
 }
 
 export const walletService = new WalletService();

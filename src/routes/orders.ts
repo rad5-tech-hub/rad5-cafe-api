@@ -15,8 +15,9 @@ function num(val: unknown, defaultVal: number = 1): number {
 
 router.post('/', authenticate, async (req: Request, res: Response) => {
   try {
-    const { items, pin, paymentMethod, customerName } = req.body;
+    const { items, pin, paymentMethod, customerName, source } = req.body;
     const method = paymentMethod === 'cash' ? 'cash' : 'wallet';
+    const reqSource = source || req.headers['x-source'] || 'web';
 
     if (!items || (method === 'wallet' && !pin)) {
       res.status(400).json({ success: false, message: 'Items and PIN are required for wallet payments' });
@@ -26,7 +27,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       res.status(400).json({ success: false, message: 'Customer name is required for cash payments' });
       return;
     }
-    const result = await orderService.createOrder(req.user!.userId, items, pin || '', method, customerName);
+    const result = await orderService.createOrder(req.user!.userId, items, pin || '', method, customerName, reqSource as 'web' | 'mobile');
     res.status(201).json({ success: true, message: 'Purchase successful', data: result });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
@@ -82,8 +83,9 @@ router.post('/batch', authenticate, async (req: Request, res: Response) => {
     const errors = [];
 
     for (let i = 0; i < orders.length; i++) {
-      const { items, pin, paymentMethod, customerName } = orders[i];
+      const { items, pin, paymentMethod, customerName, source } = orders[i];
       const method = paymentMethod === 'cash' ? 'cash' : 'wallet';
+      const reqSource = source || req.headers['x-source'] || 'web';
 
       if (!items || (method === 'wallet' && !pin)) {
         errors.push({ index: i, message: 'Items and PIN are required for wallet payments' });
@@ -95,7 +97,7 @@ router.post('/batch', authenticate, async (req: Request, res: Response) => {
       }
 
       try {
-        const result = await orderService.createOrder(req.user!.userId, items, pin || '', method, customerName);
+        const result = await orderService.createOrder(req.user!.userId, items, pin || '', method, customerName, reqSource as 'web' | 'mobile');
         results.push(result);
       } catch (err: any) {
         errors.push({ index: i, message: err.message });

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { auth, db, Timestamp } from "../config/firebase.js";
 import { env } from "../config/env.js";
 import { User, JwtPayload } from "../types/index.js";
@@ -46,6 +47,8 @@ async function autoCreateUser(firebaseUid: string, email: string) {
         pinSetup: false,
         expoPushToken: null,
         isActive: true,
+        referralCode: crypto.randomBytes(4).toString("hex").toUpperCase(),
+        hasMadeFirstPurchase: false,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });

@@ -74,4 +74,18 @@ router.post('/expo-push-token', authenticate, async (req: Request, res: Response
   }
 });
 
+router.post('/referral', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { referralCode, method } = req.body;
+    if (!referralCode || !method) {
+      res.status(400).json({ success: false, message: 'Referral code and method are required' });
+      return;
+    }
+    await authService.setReferral(req.user!.userId, referralCode, method);
+    res.json({ success: true, message: 'Referral applied successfully' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 export default router;

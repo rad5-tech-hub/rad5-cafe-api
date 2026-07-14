@@ -15,6 +15,10 @@ export interface User {
   isActive: boolean;
   createdAt: admin.firestore.Timestamp;
   updatedAt: admin.firestore.Timestamp;
+  referralCode: string;
+  referredBy?: string;
+  referralMethod?: 'auto' | 'manual';
+  hasMadeFirstPurchase?: boolean;
 }
 
 export interface Wallet {
@@ -32,7 +36,7 @@ export interface Transaction {
   id: string;
   walletId: string;
   userId: string;
-  type: 'funding' | 'purchase' | 'transfer_sent' | 'transfer_received' | 'withdrawal';
+  type: 'funding' | 'purchase' | 'transfer_sent' | 'transfer_received' | 'withdrawal' | 'reward';
   amount: number;
   fee: number;
   reference: string;
@@ -82,6 +86,7 @@ export interface Order {
   total: number;
   status: 'pending' | 'completed' | 'cancelled';
   paymentMethod?: 'wallet' | 'cash';
+  source?: 'web' | 'mobile';
   reconciliationStatus?: 'none' | 'limbo' | 'reconciled';
   reconciledBy?: string;
   reconciledAt?: admin.firestore.Timestamp;
