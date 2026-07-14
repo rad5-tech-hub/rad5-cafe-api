@@ -1,7 +1,7 @@
 import { db, Timestamp, FieldValue } from '../config/firebase.js';
 import { Product, StockHistory, Order } from '../types/index.js';
 import { calculateProfit } from '../utils/helpers.js';
-import { notificationService } from './notifications.js';
+import { expoPushService } from './expo-push.js';
 
 const PRODUCTS_COLLECTION = 'products';
 const STOCK_HISTORY_COLLECTION = 'stock_history';
@@ -170,7 +170,7 @@ export class ProductService {
     await db.collection(STOCK_HISTORY_COLLECTION).add(historyEntry as unknown as Partial<StockHistory>);
     
     // Notification for restock
-    void notificationService.sendToRole('admin', 'Product Restocked', `${product.name} has been restocked with ${quantity} units.`);
+    void expoPushService.sendToRole('admin', 'Product Restocked', `${product.name} has been restocked with ${quantity} units.`);
 
     return this.getById(id);
   }

@@ -40,6 +40,39 @@ class ExpoPushService {
     await this.sendToToken(token, title, body, data);
   }
 
+  async sendToRole(
+    role: string,
+    title: string,
+    body: string,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const snapshot = await db.collection(USERS_COLLECTION)
+        .where('role', '==', role)
+        .get();
+
+      const messages: ExpoPushMessage[] = [];
+      snapshot.forEach(doc => {
+        const userData = doc.data();
+        if (userData.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {
+          messages.push({
+            to: userData.expoPushToken,
+            sound: 'default',
+            title,
+            body,
+            data: data ?? {},
+          });
+        }
+      });
+
+      if (messages.length > 0) {
+        this.sendBatchAndForget(messages);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   async sendToToken(
     pushToken: string,
     title: string,
