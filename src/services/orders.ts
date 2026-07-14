@@ -101,6 +101,7 @@ export class OrderService {
     const rewardNotifications: { userId: string, title: string, body: string, data: any }[] = [];
 
     await db.runTransaction(async (transaction) => {
+      // ── 1. ALL READS FIRST ──────────────────────────────────────
       const productDocs: { op: typeof stockUpdateOps[0]; product: Product }[] = [];
       for (const op of stockUpdateOps) {
         const productDoc = await transaction.get(op.productRef);
@@ -111,6 +112,21 @@ export class OrderService {
         productDocs.push({ op, product });
       }
 
+      const txUserDoc = await transaction.get(db.collection(USERS_COLLECTION).doc(userId));
+      const txUser = txUserDoc.data() as User;
+      const isFirstPurchase = !txUser.hasMadeFirstPurchase;
+      
+      let txReferrerUser = null;
+      if (isFirstPurchase && txUser.referredBy && referrerDocRef && referrerWalletRef) {
+         const refUserDoc = await transaction.get(referrerDocRef);
+         txReferrerUser = refUserDoc.data() as User;
+      }
+
+      // Read wallet doc inside the transaction for consistency
+      const txWalletDoc = await transaction.get(walletDoc.ref);
+      if (!txWalletDoc.exists) throw new Error('Wallet not found');
+
+      // ── 2. ALL WRITES AFTER ─────────────────────────────────────
       for (const { op, product } of productDocs) {
         transaction.update(op.productRef, {
           quantity: FieldValue.increment(-op.item.quantity),
@@ -127,16 +143,6 @@ export class OrderService {
           reference: receiptNumber,
           createdAt: Timestamp.now(),
         });
-      }
-
-      const txUserDoc = await transaction.get(db.collection(USERS_COLLECTION).doc(userId));
-      const txUser = txUserDoc.data() as User;
-      const isFirstPurchase = !txUser.hasMadeFirstPurchase;
-      
-      let txReferrerUser = null;
-      if (isFirstPurchase && txUser.referredBy && referrerDocRef && referrerWalletRef) {
-         const refUserDoc = await transaction.get(referrerDocRef);
-         txReferrerUser = refUserDoc.data() as User;
       }
 
       if (isFirstPurchase) {

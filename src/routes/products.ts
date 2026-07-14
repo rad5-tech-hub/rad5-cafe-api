@@ -77,12 +77,22 @@ router.post('/', authenticate, requireAdmin, async (req: Request, res: Response)
 
 router.post('/check-stock', authenticate, async (req: Request, res: Response) => {
   try {
-    const { ids } = req.body;
-    if (!Array.isArray(ids) || ids.length === 0) {
+    // Accept: raw array [{productId, quantity}], { ids: string[] }, or { items: [{productId, quantity}] }
+    let productIds: string[] = [];
+    if (Array.isArray(req.body) && req.body.length > 0) {
+      // Raw array payload — extract productId from each item if objects, or use as-is if strings
+      productIds = req.body.map((item: any) => typeof item === 'string' ? item : item.productId);
+    } else if (Array.isArray(req.body.ids) && req.body.ids.length > 0) {
+      productIds = req.body.ids as string[];
+    } else if (Array.isArray(req.body.items) && req.body.items.length > 0) {
+      productIds = req.body.items.map((item: { productId: string }) => item.productId);
+    }
+    productIds = productIds.filter(Boolean);
+    if (productIds.length === 0) {
       res.status(400).json({ success: false, message: 'Please provide a non-empty array of product IDs' });
       return;
     }
-    const stockInfo = await productService.checkStock(ids as string[]);
+    const stockInfo = await productService.checkStock(productIds);
     res.json({ success: true, data: stockInfo });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
