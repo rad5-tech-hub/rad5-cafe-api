@@ -50,6 +50,7 @@ class ExpoPushService {
     title: string,
     body: string,
     data?: Record<string, unknown>,
+    excludeUserId?: string,
   ): Promise<void> {
     try {
       const snapshot = await db.collection(USERS_COLLECTION)
@@ -58,6 +59,7 @@ class ExpoPushService {
 
       const messages: ExpoPushMessage[] = [];
       snapshot.forEach(doc => {
+        if (excludeUserId && doc.id === excludeUserId) return;
         const userData = doc.data();
         if (userData.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {
           messages.push({
@@ -78,7 +80,7 @@ class ExpoPushService {
     }
 
     // FCM web push (browser)
-    void fcmWebPushService.sendToRole(role, title, body, data);
+    void fcmWebPushService.sendToRole(role, title, body, data, excludeUserId);
   }
 
   async sendToToken(

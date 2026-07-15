@@ -591,7 +591,7 @@ export class OrderService {
     
     // Notifications for reconciliation
     void expoPushService.sendToUser(customerUserId, 'Order Reconciled', `Your cash order (${orderRef.id}) has been successfully reconciled.`);
-    void expoPushService.sendToRole('admin', 'Cash Order Reconciled', `A cash order for ${user.fullName} has been reconciled.`);
+    void expoPushService.sendToRole('admin', 'Cash Order Reconciled', `A cash order for ${user.fullName} has been reconciled.`, {}, adminUserId);
   }
 
   async deleteLimboOrder(orderId: string, adminUserId: string, reason: string): Promise<Order> {
@@ -638,6 +638,7 @@ export class OrderService {
 
       transaction.update(orderRef, {
         status: 'cancelled',
+        reconciliationStatus: 'none',
         cancelledBy: adminName,
         cancelledAt: Timestamp.now(),
         cancelReason: reason,

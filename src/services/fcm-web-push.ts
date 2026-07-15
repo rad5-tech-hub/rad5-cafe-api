@@ -20,13 +20,27 @@ class FcmWebPushService {
     const data = userDoc.data();
     const existing: string[] = data?.fcmWebTokens ?? [];
 
-    // Don't add duplicates
-    if (existing.includes(token)) return;
-
-    await userRef.update({
-      fcmWebTokens: FieldValue.arrayUnion(token),
-      updatedAt: Timestamp.now(),
+    // Remove token from other users first to prevent duplicate notifications
+    const existingSnapshot = await db.collection(USERS_COLLECTION).where('fcmWebTokens', 'array-contains', token).get();
+    const batch = db.batch();
+    
+    existingSnapshot.docs.forEach(doc => {
+      if (doc.id !== userId) {
+        batch.update(doc.ref, {
+          fcmWebTokens: FieldValue.arrayRemove(token),
+          updatedAt: Timestamp.now(),
+        });
+      }
     });
+
+    if (!existing.includes(token)) {
+      batch.update(userRef, {
+        fcmWebTokens: FieldValue.arrayUnion(token),
+        updatedAt: Timestamp.now(),
+      });
+    }
+
+    await batch.commit();
   }
 
   /**
@@ -69,6 +83,7 @@ class FcmWebPushService {
     title: string,
     body: string,
     data?: Record<string, unknown>,
+    excludeUserId?: string,
   ): Promise<void> {
     try {
       const snapshot = await db.collection(USERS_COLLECTION)
@@ -77,6 +92,7 @@ class FcmWebPushService {
 
       const allTokens: { token: string; userId: string }[] = [];
       snapshot.forEach(doc => {
+        if (excludeUserId && doc.id === excludeUserId) return;
         const userData = doc.data();
         const tokens: string[] = userData?.fcmWebTokens ?? [];
         tokens.forEach(t => allTokens.push({ token: t, userId: doc.id }));

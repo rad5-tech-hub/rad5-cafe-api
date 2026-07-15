@@ -69,10 +69,23 @@ export class AuthService {
     if (!token.startsWith('ExponentPushToken[') && !token.startsWith('ExpoPushToken[')) {
       throw new Error('Invalid Expo push token format');
     }
-    await db.collection(USERS_COLLECTION).doc(userId).update({
+    
+    // Remove token from other users
+    const existingSnapshot = await db.collection(USERS_COLLECTION).where('expoPushToken', '==', token).get();
+    const batch = db.batch();
+    
+    existingSnapshot.docs.forEach(doc => {
+      if (doc.id !== userId) {
+        batch.update(doc.ref, { expoPushToken: null, updatedAt: Timestamp.now() });
+      }
+    });
+
+    batch.update(db.collection(USERS_COLLECTION).doc(userId), {
       expoPushToken: token,
       updatedAt: Timestamp.now(),
     });
+    
+    await batch.commit();
   }
 
   async setReferral(userId: string, referralCode: string, method: 'auto' | 'manual'): Promise<void> {

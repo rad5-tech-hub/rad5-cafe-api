@@ -562,6 +562,60 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
 });
 
 /**
+ * Get Single Sale Details (Admin)
+ */
+router.get('/sales/:id', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id as string;
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderDoc = await orderRef.get();
+    
+    if (!orderDoc.exists) {
+      res.status(404).json({ success: false, message: 'Sale not found' });
+      return;
+    }
+
+    const order = { id: orderDoc.id, ...orderDoc.data() } as Order;
+    
+    // Attempt to get the receipt for items
+    let items = order.items || [];
+    let receiptNumber = order.receiptNumber || 'N/A';
+    
+    const receiptSnapshot = await db.collection('receipts').where('orderId', '==', order.id).limit(1).get();
+    if (!receiptSnapshot.empty) {
+      const receipt = receiptSnapshot.docs[0].data();
+      if (!items.length) items = receipt.items || [];
+      if (receiptNumber === 'N/A') receiptNumber = receipt.receiptNumber;
+    }
+
+    // Format like a SaleItem for the frontend
+    res.json({
+      success: true,
+      data: {
+        id: order.id,
+        receiptNumber,
+        customerName: order.userName || order.customerName || 'Unknown',
+        userId: order.userId,
+        revenue: order.total || order.subtotal || 0,
+        profit: 0, // Simplified for single fetch, not strictly needed for details screen
+        status: order.status,
+        issued: order.issued || false,
+        issuedBy: order.issuedBy || null,
+        issuedAt: order.issuedAt?.toDate?.()?.toISOString() || null,
+        cancelledBy: order.cancelledBy || null,
+        cancelledAt: order.cancelledAt?.toDate?.()?.toISOString() || null,
+        date: order.createdAt.toDate().toISOString(),
+        items: items,
+        paymentMethod: order.paymentMethod,
+        reconciliationStatus: order.reconciliationStatus,
+      }
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * Adjust Sale Status (Cancel and Refund Wallet / Revert Stock)
  */
 router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Response) => {
