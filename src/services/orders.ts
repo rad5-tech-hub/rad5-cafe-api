@@ -428,7 +428,7 @@ export class OrderService {
 
     void notificationService.createUserNotification({
       userId: order.userId,
-      type: 'success',
+      type: 'info',
       title: 'Order Issued',
       body: `Your order ${order.receiptNumber} has been issued and is ready!`,
     });
@@ -643,7 +643,7 @@ export class OrderService {
         cancelReason: reason,
       });
 
-      return { ...order, status: 'cancelled', cancelledBy: adminName, cancelReason: reason };
+      return { ...order, status: 'cancelled' as const, cancelledBy: adminName, cancelReason: reason };
     });
 
     if (result.userId) {
