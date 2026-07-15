@@ -573,7 +573,6 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
       res.status(400).json({ success: false, message: 'Valid status is required' });
       return;
     }
-
     // Verify PIN
     await verifyAdminPin(req.user!.userId, pin);
 
@@ -603,6 +602,39 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
       if (walletSnapshot.empty) throw new Error('Customer wallet not found');
       const walletDoc = walletSnapshot.docs[0]!;
 
+      // Check for buyer cashback reward transaction
+      const rewardTxns = await db.collection('transactions')
+        .where('reference', '==', `CB-${order.receiptNumber}`)
+        .limit(1)
+        .get();
+      
+      let rewardAmount = 0;
+      if (!rewardTxns.empty) {
+        rewardAmount = rewardTxns.docs[0].data().amount || 0;
+      }
+
+      // Check for referrer cashback reward transaction
+      const referrerTxns = await db.collection('transactions')
+        .where('reference', '==', `REF-${order.receiptNumber}`)
+        .limit(1)
+        .get();
+      
+      let referrerAmount = 0;
+      let referrerUserId = '';
+      let referrerWalletDoc: any = null;
+      if (!referrerTxns.empty) {
+        const refData = referrerTxns.docs[0].data();
+        referrerAmount = refData.amount || 0;
+        referrerUserId = refData.userId;
+        
+        if (referrerUserId) {
+          const refWalletSnapshot = await db.collection('wallets').where('userId', '==', referrerUserId).limit(1).get();
+          if (!refWalletSnapshot.empty) {
+            referrerWalletDoc = refWalletSnapshot.docs[0];
+          }
+        }
+      }
+
       await db.runTransaction(async (transaction) => {
         // 1. Revert product stocks
         for (const item of order.items) {
@@ -617,14 +649,15 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
             type: 'cancel_and_refund',
             userId: order.userId,
             quantity: item.quantity,
-            reference: `REFUND-${order.receiptNumber}`,
+            reference: `RFD-${order.receiptNumber}`,
             createdAt: Timestamp.now(),
           });
         }
 
-        // 2. Refund wallet balance
+        // 2. Refund wallet balance (minus buyer cashback reward)
+        const netRefund = order.total - rewardAmount;
         transaction.update(walletDoc.ref, {
-          balance: FieldValue.increment(order.total),
+          balance: FieldValue.increment(netRefund),
           totalSpent: FieldValue.increment(-order.total),
           updatedAt: Timestamp.now(),
         });
@@ -636,14 +669,50 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
           type: 'funding',
           amount: order.total,
           fee: 0,
-          reference: `REF-${order.receiptNumber}`,
+          reference: `RFD-${order.receiptNumber}`,
           description: `Refund for cancelled order ${order.receiptNumber}`,
           status: 'completed',
           paymentMethod: 'wallet',
           createdAt: Timestamp.now(),
         });
 
-        // 4. Update order status
+        // 4. Create reward revocation log if cashback was earned
+        if (rewardAmount > 0) {
+          transaction.set(db.collection('transactions').doc(), {
+            walletId: user.walletId,
+            userId: order.userId,
+            type: 'reward',
+            amount: -rewardAmount,
+            fee: 0,
+            reference: `RWR-${order.receiptNumber}`,
+            description: `Cashback revoked for cancelled order ${order.receiptNumber}`,
+            status: 'completed',
+            paymentMethod: 'wallet',
+            createdAt: Timestamp.now(),
+          });
+        }
+
+        // 5. Revert Referrer reward if any
+        if (referrerWalletDoc && referrerAmount > 0) {
+          transaction.update(referrerWalletDoc.ref, {
+            balance: FieldValue.increment(-referrerAmount),
+            updatedAt: Timestamp.now(),
+          });
+          transaction.set(db.collection('transactions').doc(), {
+            walletId: referrerWalletDoc.data().walletId,
+            userId: referrerUserId,
+            type: 'reward',
+            amount: -referrerAmount,
+            fee: 0,
+            reference: `RWR-REF-${order.receiptNumber}`,
+            description: `Referral reward revoked for cancelled order ${order.receiptNumber}`,
+            status: 'completed',
+            paymentMethod: 'wallet',
+            createdAt: Timestamp.now(),
+          });
+        }
+
+        // 6. Update order status
         transaction.update(orderRef, {
           status: 'cancelled',
           cancelledBy: req.user!.userId,
