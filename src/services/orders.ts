@@ -152,41 +152,43 @@ export class OrderService {
       let buyerReward = 0;
       let referrerReward = 0;
       
-      if (isFirstPurchase && txUser.referredBy && txReferrerUser && referrerWalletRef) {
-        if (txUser.referralMethod === 'manual') {
-          referrerReward = totalProfit * 0.025;
-          buyerReward = totalProfit * 0.025;
-        } else {
-          referrerReward = totalProfit * 0.05;
-        }
-        
-        if (referrerReward > 0) {
-          transaction.update(referrerWalletRef, {
-            balance: FieldValue.increment(referrerReward),
-            updatedAt: Timestamp.now()
-          });
-          const refTxnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
-          transaction.set(refTxnRef, {
-            walletId: txReferrerUser.walletId,
-            userId: referrerDocRef!.id,
-            type: 'reward',
-            amount: referrerReward,
-            fee: 0,
-            reference: `REF-${receiptNumber}`,
-            description: `Referral bonus from ${txUser.fullName || 'User'}`,
-            status: 'completed',
-            createdAt: Timestamp.now(),
-          } as unknown as Partial<Transaction>);
+      if (paymentMethod !== 'cash') {
+        if (isFirstPurchase && txUser.referredBy && txReferrerUser && referrerWalletRef) {
+          if (txUser.referralMethod === 'manual') {
+            referrerReward = totalProfit * 0.025;
+            buyerReward = totalProfit * 0.025;
+          } else {
+            referrerReward = totalProfit * 0.05;
+          }
           
-          rewardNotifications.push({
-            userId: referrerDocRef!.id,
-            title: 'Referral Bonus',
-            body: `You received ₦${referrerReward.toLocaleString()} from your referral's first purchase!`,
-            data: { type: 'reward', amount: referrerReward }
-          });
+          if (referrerReward > 0) {
+            transaction.update(referrerWalletRef, {
+              balance: FieldValue.increment(referrerReward),
+              updatedAt: Timestamp.now()
+            });
+            const refTxnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
+            transaction.set(refTxnRef, {
+              walletId: txReferrerUser.walletId,
+              userId: referrerDocRef!.id,
+              type: 'reward',
+              amount: referrerReward,
+              fee: 0,
+              reference: `REF-${receiptNumber}`,
+              description: `Referral bonus from ${txUser.fullName || 'User'}`,
+              status: 'completed',
+              createdAt: Timestamp.now(),
+            } as unknown as Partial<Transaction>);
+            
+            rewardNotifications.push({
+              userId: referrerDocRef!.id,
+              title: 'Referral Bonus',
+              body: `You received ₦${referrerReward.toLocaleString()} from your referral's first purchase!`,
+              data: { type: 'reward', amount: referrerReward }
+            });
+          }
+        } else if (!isFirstPurchase || !txUser.referredBy) {
+          buyerReward = source === 'mobile' ? totalProfit * 0.05 : totalProfit * 0.03;
         }
-      } else if (!isFirstPurchase || !txUser.referredBy) {
-        buyerReward = source === 'mobile' ? totalProfit * 0.05 : totalProfit * 0.03;
       }
       
       let walletUpdate: any = {};
