@@ -424,6 +424,13 @@ export class OrderService {
       { type: 'order_issued', orderId }
     );
 
+    void notificationService.createUserNotification({
+      userId: order.userId,
+      type: 'success',
+      title: 'Order Issued',
+      body: `Your order ${order.receiptNumber} has been issued and is ready!`,
+    });
+
     return { ...order, issued: true, issuedAt: Timestamp.now(), issuedBy: adminUserId };
   }
   async getLimboOrders(page: number = 1, limit: number = 20): Promise<{ orders: Order[]; total: number }> {
@@ -586,7 +593,7 @@ export class OrderService {
   }
 
   async deleteLimboOrder(orderId: string, adminUserId: string, reason: string): Promise<Order> {
-    return await db.runTransaction(async (transaction) => {
+    const result = await db.runTransaction(async (transaction) => {
       const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
       const orderDoc = await transaction.get(orderRef);
 
@@ -636,6 +643,23 @@ export class OrderService {
 
       return { ...order, status: 'cancelled', cancelledBy: adminName, cancelReason: reason };
     });
+
+    if (result.userId) {
+      void expoPushService.sendToUser(
+        result.userId,
+        'Order Cancelled',
+        `Your order ${result.receiptNumber} has been cancelled.`,
+        { type: 'order_cancelled', orderId }
+      );
+      void notificationService.createUserNotification({
+        userId: result.userId,
+        type: 'info',
+        title: 'Order Cancelled',
+        body: `Your order ${result.receiptNumber} has been cancelled.`,
+      });
+    }
+
+    return result;
   }
 
   async getUserProductFrequencies(userId: string): Promise<Record<string, number>> {
