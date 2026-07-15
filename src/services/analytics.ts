@@ -434,6 +434,8 @@ export class AnalyticsService {
       dayBuckets.set(d.toISOString().split('T')[0], { revenue: 0, profit: 0, salesCount: 0 });
     }
 
+    const userSpends = new Map<string, { userId: string; totalSpent: number; orderCount: number }>();
+
     for (const order of orders) {
       if (order.reconciliationStatus === 'limbo') continue;
       salesCount++;
@@ -443,6 +445,14 @@ export class AnalyticsService {
       bucket.revenue += order.total || 0;
       bucket.salesCount++;
       totalRevenue += order.total || 0;
+
+      const uid = order.userId;
+      if (uid) {
+        const uSpend = userSpends.get(uid) || { userId: uid, totalSpent: 0, orderCount: 0 };
+        uSpend.totalSpent += order.total || 0;
+        uSpend.orderCount++;
+        userSpends.set(uid, uSpend);
+      }
 
       for (const item of order.items || []) {
         const itemProfit = (item.unitPrice - item.costPrice) * item.quantity;
@@ -471,6 +481,13 @@ export class AnalyticsService {
     const highestMarginProduct = Array.from(productSales.values())
       .sort((a, b) => b.marginPercent - a.marginPercent)[0] || null;
 
+    const topSpenderObj = Array.from(userSpends.values()).sort((a, b) => b.totalSpent - a.totalSpent)[0];
+    let topSpender = null;
+    if (topSpenderObj) {
+      const userDoc = await db.collection(USERS_COLLECTION).doc(topSpenderObj.userId).get();
+      topSpender = { fullName: userDoc.exists ? (userDoc.data() as any).fullName : 'Unknown', totalSpent: topSpenderObj.totalSpent, orderCount: topSpenderObj.orderCount };
+    }
+
     let busiestDay = '';
     let maxDaySales = -1;
     const revenueByDay = [];
@@ -487,7 +504,7 @@ export class AnalyticsService {
       period: { start: start.toISOString(), end: end.toISOString() },
       summary: { totalRevenue, totalProfit, totalSalesCount: salesCount, newCustomers: newUsersSnapshot.data().count },
       trend: { busiestDay, revenueByDay },
-      highlights: { topSellingProduct: topProducts[0] || null, highestMarginProduct, topProducts }
+      highlights: { topSellingProduct: topProducts[0] || null, highestMarginProduct, topProducts, topSpender }
     };
   }
 

@@ -247,6 +247,29 @@ router.delete('/orders/:orderId', authenticate, requireAdmin, async (req: Reques
 
     logAudit(req.user!.userId, 'delete_cash_order', 'orders', req.params.orderId as string, { reason, receiptNumber: result.receiptNumber }, req);
 
+    if (result.userId) {
+      try {
+        const { expoPushService } = await import('../services/expo-push.js');
+        const { notificationService } = await import('../services/notifications.js');
+
+        void expoPushService.sendToUser(
+          result.userId,
+          'Cash Order Cancelled',
+          `Your cash order ${result.receiptNumber} was cancelled by admin. Reason: ${reason}`,
+          { type: 'order_cancelled', orderId: result.id }
+        );
+
+        void notificationService.createUserNotification({
+          userId: result.userId,
+          type: 'info',
+          title: 'Cash Order Cancelled',
+          body: `Your cash order ${result.receiptNumber} was cancelled by admin. Reason: ${reason}`,
+        });
+      } catch (notifErr) {
+        console.warn('Failed to send cancellation notifications:', notifErr);
+      }
+    }
+
     res.json({ success: true, message: 'Order deleted successfully', data: result });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });

@@ -153,8 +153,8 @@ class FcmWebPushService {
           await this.removeInvalidToken(token);
         }
       }
-    } catch {
-      // silently ignore send failures
+    } catch (error) {
+      console.error('[FCM Web Push] Multicast send failed:', error);
     }
   }
 
