@@ -149,6 +149,7 @@ export class AnalyticsService {
     const bucketMap = new Map<string, { revenue: number; profit: number; salesCount: number }>();
 
     for (const order of orders) {
+      if (order.status === 'cancelled') continue;
       if (order.reconciliationStatus === 'limbo') continue;
       const orderDate = order.createdAt.toDate();
       let key: string;
@@ -248,6 +249,7 @@ export class AnalyticsService {
 
     const userMap = new Map<string, { orderCount: number; totalSpent: number }>();
     for (const order of allOrders) {
+      if (order.status === 'cancelled') continue;
       if (order.reconciliationStatus === 'limbo') continue;
       const current = userMap.get(order.userId) || { orderCount: 0, totalSpent: 0 };
       current.orderCount++;
@@ -304,6 +306,7 @@ export class AnalyticsService {
     let monthlyProfit = 0;
 
     for (const order of allOrders) {
+      if (order.status === 'cancelled') continue;
       if (order.reconciliationStatus === 'limbo') continue;
       const orderDate = order.createdAt.toDate();
       for (const item of order.items || []) {
@@ -353,6 +356,7 @@ export class AnalyticsService {
     }
 
     for (const order of orders) {
+      if (order.status === 'cancelled') continue;
       if (order.reconciliationStatus === 'limbo') continue;
       salesCount++;
       const orderDate = order.createdAt.toDate();
@@ -437,6 +441,7 @@ export class AnalyticsService {
     const userSpends = new Map<string, { userId: string; totalSpent: number; orderCount: number }>();
 
     for (const order of orders) {
+      if (order.status === 'cancelled') continue;
       if (order.reconciliationStatus === 'limbo') continue;
       salesCount++;
       const dateKey = order.createdAt.toDate().toISOString().split('T')[0];
@@ -530,6 +535,7 @@ export class AnalyticsService {
     const userSpends = new Map<string, { userId: string; orderCount: number; totalSpent: number }>();
 
     for (const order of orders) {
+      if (order.status === 'cancelled') continue;
       if (order.reconciliationStatus === 'limbo') continue;
       salesCount++;
       totalRevenue += order.total || 0;
@@ -578,6 +584,8 @@ export class AnalyticsService {
 
     const catSales = new Map<string, { categoryName: string; revenue: number }>();
     for (const order of orders) {
+      if (order.status === 'cancelled') continue;
+      if (order.reconciliationStatus === 'limbo') continue;
       for (const item of order.items || []) {
         const catId = productToCat.get(item.productId);
         const catName = catId ? catNames.get(catId) || 'Unknown' : 'Unknown';
@@ -621,6 +629,7 @@ export class AnalyticsService {
 
     let validSalesCount = 0;
     for (const order of orders) {
+      if (order.status === 'cancelled') continue;
       if (order.reconciliationStatus === 'limbo') continue;
       validSalesCount++;
       totalRevenue += order.total || 0;

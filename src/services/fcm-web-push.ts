@@ -56,8 +56,8 @@ class FcmWebPushService {
       if (tokens.length === 0) return;
 
       await this.sendToTokens(tokens, title, body, data, userId);
-    } catch {
-      // silently ignore — don't block the main flow
+    } catch (error) {
+      console.error('[FCM Web Push] sendToUser failed:', error);
     }
   }
 
@@ -90,8 +90,8 @@ class FcmWebPushService {
         body,
         data,
       );
-    } catch {
-      // silently ignore
+    } catch (error) {
+      console.error('[FCM Web Push] sendToRole failed:', error);
     }
   }
 
