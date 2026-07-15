@@ -152,7 +152,7 @@ export class OrderService {
       let buyerReward = 0;
       let referrerReward = 0;
       
-      if (paymentMethod !== 'cash') {
+      if (String(paymentMethod).toLowerCase() !== 'cash') {
         if (isFirstPurchase && txUser.referredBy && txReferrerUser && referrerWalletRef) {
           if (txUser.referralMethod === 'manual') {
             referrerReward = totalProfit * 0.025;

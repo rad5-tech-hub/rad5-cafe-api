@@ -16,7 +16,7 @@ function num(val: unknown, defaultVal: number = 1): number {
 router.post('/', authenticate, async (req: Request, res: Response) => {
   try {
     const { items, pin, paymentMethod, customerName, source } = req.body;
-    const method = paymentMethod === 'cash' ? 'cash' : 'wallet';
+    const method = String(paymentMethod).toLowerCase() === 'cash' ? 'cash' : 'wallet';
     const reqSource = source || req.headers['x-source'] || 'web';
 
     if (!items || (method === 'wallet' && !pin)) {
@@ -84,7 +84,7 @@ router.post('/batch', authenticate, async (req: Request, res: Response) => {
 
     for (let i = 0; i < orders.length; i++) {
       const { items, pin, paymentMethod, customerName, source } = orders[i];
-      const method = paymentMethod === 'cash' ? 'cash' : 'wallet';
+      const method = String(paymentMethod).toLowerCase() === 'cash' ? 'cash' : 'wallet';
       const reqSource = source || req.headers['x-source'] || 'web';
 
       if (!items || (method === 'wallet' && !pin)) {

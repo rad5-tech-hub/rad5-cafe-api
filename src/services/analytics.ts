@@ -800,7 +800,8 @@ export class AnalyticsService {
         limboQuantity: 0,
         limboAmount: 0,
         sellingPrice: p.sellingPrice || 0,
-        costPrice: p.costPrice || 0
+        costPrice: p.costPrice || 0,
+        remainingStock: p.quantity || 0
       });
     }
 
@@ -825,7 +826,8 @@ export class AnalyticsService {
             limboQuantity: 0,
             limboAmount: 0,
             sellingPrice: item.unitPrice || 0,
-            costPrice: item.costPrice || 0
+            costPrice: item.costPrice || 0,
+            remainingStock: 0
           });
         }
 
