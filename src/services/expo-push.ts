@@ -5,6 +5,7 @@ import Expo, {
 } from 'expo-server-sdk';
 import { db } from '../config/firebase.js';
 import { env } from '../config/env.js';
+import { fcmWebPushService } from './fcm-web-push.js';
 
 const USERS_COLLECTION = 'users';
 
@@ -34,10 +35,14 @@ class ExpoPushService {
     body: string,
     data?: Record<string, unknown>,
   ): Promise<void> {
+    // Expo push (mobile)
     const token = await this.getUserPushToken(userId);
-    if (!token || !Expo.isExpoPushToken(token)) return;
+    if (token && Expo.isExpoPushToken(token)) {
+      await this.sendToToken(token, title, body, data);
+    }
 
-    await this.sendToToken(token, title, body, data);
+    // FCM web push (browser)
+    void fcmWebPushService.sendToUser(userId, title, body, data);
   }
 
   async sendToRole(
@@ -71,6 +76,9 @@ class ExpoPushService {
     } catch {
       // ignore
     }
+
+    // FCM web push (browser)
+    void fcmWebPushService.sendToRole(role, title, body, data);
   }
 
   async sendToToken(

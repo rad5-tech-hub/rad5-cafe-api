@@ -12,6 +12,7 @@ export interface User {
   pin: string | null;
   pinSetup: boolean;
   expoPushToken: string | null;
+  fcmWebTokens: string[];
   isActive: boolean;
   createdAt: admin.firestore.Timestamp;
   updatedAt: admin.firestore.Timestamp;

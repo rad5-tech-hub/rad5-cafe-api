@@ -74,6 +74,36 @@ router.post('/expo-push-token', authenticate, async (req: Request, res: Response
   }
 });
 
+router.post('/web-push-token', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      res.status(400).json({ success: false, message: 'Web push token is required' });
+      return;
+    }
+    const { fcmWebPushService } = await import('../services/fcm-web-push.js');
+    await fcmWebPushService.saveToken(req.user!.userId, token);
+    res.json({ success: true, message: 'Web push token saved' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/web-push-token', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      res.status(400).json({ success: false, message: 'Web push token is required' });
+      return;
+    }
+    const { fcmWebPushService } = await import('../services/fcm-web-push.js');
+    await fcmWebPushService.removeToken(req.user!.userId, token);
+    res.json({ success: true, message: 'Web push token removed' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/referral', authenticate, async (req: Request, res: Response) => {
   try {
     const { referralCode, method } = req.body;
