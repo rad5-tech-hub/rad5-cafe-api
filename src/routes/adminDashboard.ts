@@ -654,7 +654,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
       const user = userDoc.data() as User;
       const isCustomer = user.role !== 'admin';
 
-      let walletDoc: any = null;
+      let walletDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
       if (isCustomer) {
         const walletSnapshot = await db.collection('wallets').where('walletId', '==', user.walletId).limit(1).get();
         if (walletSnapshot.empty) throw new Error('Customer wallet not found');
@@ -680,7 +680,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
       
       let referrerAmount = 0;
       let referrerUserId = '';
-      let referrerWalletDoc: any = null;
+      let referrerWalletDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
       if (!referrerTxns.empty) {
         const refData = referrerTxns.docs[0].data();
         referrerAmount = refData.amount || 0;
@@ -697,7 +697,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
       await db.runTransaction(async (transaction) => {
         let currentBalance = 0;
         let currentTotalSpent = 0;
-        let txWalletDoc = null;
+        let txWalletDoc: FirebaseFirestore.DocumentSnapshot | null = null;
 
         if (isCustomer && walletDoc) {
           txWalletDoc = await transaction.get(walletDoc.ref);
@@ -708,7 +708,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
         }
 
         let currentReferrerBalance = 0;
-        let txReferrerWalletDoc = null;
+        let txReferrerWalletDoc: FirebaseFirestore.DocumentSnapshot | null = null;
         if (isCustomer && referrerWalletDoc && referrerAmount > 0) {
           txReferrerWalletDoc = await transaction.get(referrerWalletDoc.ref);
           if (txReferrerWalletDoc.exists) {
@@ -777,7 +777,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
           }
 
           // 5. Revert Referrer reward if any
-          if (txReferrerWalletDoc && txReferrerWalletDoc.exists && referrerAmount > 0) {
+          if (referrerWalletDoc && txReferrerWalletDoc && txReferrerWalletDoc.exists && referrerAmount > 0) {
             const newReferrerBalance = Math.round((currentReferrerBalance - referrerAmount + Number.EPSILON) * 100) / 100;
             transaction.update(referrerWalletDoc.ref, {
               balance: newReferrerBalance,
