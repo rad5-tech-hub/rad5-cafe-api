@@ -108,7 +108,6 @@ async function finalizePaystackPayment(
   const ledgerRef = db.collection(APPLIED_PAYMENTS_LEDGER).doc('ledger');
   const purchaseRef = purchaseDoc.ref;
   const userId = purchaseData.userId;
-  const walletId = purchaseData.walletId;
   const amountKobo = purchaseData.amount;
   const amountMain = amountKobo / 100;
 
@@ -120,7 +119,11 @@ async function finalizePaystackPayment(
 
   try {
     const txnResult = await db.runTransaction(async (txn) => {
+      // 1. ALL READS FIRST
       const ledgerDoc = await txn.get(ledgerRef);
+      const walletDoc = await txn.get(walletRef);
+
+      // 2. LOGIC AND VALIDATIONS
       const payments: Record<string, string> = ledgerDoc.exists
         ? (ledgerDoc.data()?.payments ?? {})
         : {};
@@ -129,10 +132,19 @@ async function finalizePaystackPayment(
         return { alreadyApplied: true, transactionId: undefined as string | undefined };
       }
 
+      if (!walletDoc.exists) throw new Error('Customer wallet not found');
+      const walletData = walletDoc.data() || {};
+      const currentBalance = walletData.balance || 0;
+      const currentTotalFunded = walletData.totalFunded || 0;
+
+      const newBalance = Math.round((currentBalance + amountMain + Number.EPSILON) * 100) / 100;
+      const newTotalFunded = Math.round((currentTotalFunded + amountMain + Number.EPSILON) * 100) / 100;
+
+      // 3. ALL WRITES LAST
       const txnDocRef = db.collection(TRANSACTIONS).doc();
 
       txn.set(txnDocRef, {
-        walletId,
+        walletId: purchaseData.walletId,
         userId,
         type: 'funding' as const,
         amount: amountMain,
@@ -154,15 +166,6 @@ async function finalizePaystackPayment(
         status: 'completed',
         updatedAt: Timestamp.now(),
       });
-
-      const walletDoc = await txn.get(walletRef);
-      if (!walletDoc.exists) throw new Error('Customer wallet not found');
-      const walletData = walletDoc.data() || {};
-      const currentBalance = walletData.balance || 0;
-      const currentTotalFunded = walletData.totalFunded || 0;
-
-      const newBalance = Math.round((currentBalance + amountMain + Number.EPSILON) * 100) / 100;
-      const newTotalFunded = Math.round((currentTotalFunded + amountMain + Number.EPSILON) * 100) / 100;
 
       txn.update(walletRef, {
         balance: newBalance,
