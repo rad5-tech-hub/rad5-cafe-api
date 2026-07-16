@@ -647,6 +647,10 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
 
     // Perform refund and revert stock if cancelled
     if (status === 'cancelled') {
+      if (order.issued) {
+        res.status(400).json({ success: false, message: 'Issued orders cannot be cancelled' });
+        return;
+      }
       const userRef = db.collection('users').doc(order.userId);
       const userDoc = await userRef.get();
       if (!userDoc.exists) throw new Error('Customer user not found');
