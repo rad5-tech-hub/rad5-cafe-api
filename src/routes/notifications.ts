@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { notificationService } from '../services/notifications.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { expoPushService } from '../services/expo-push.js';
+import { db } from '../config/firebase.js';
 
 const router = Router();
 
@@ -92,6 +94,34 @@ router.put('/user/:id/read', authenticate, async (req: Request, res: Response) =
   try {
     await notificationService.markNotificationRead(req.params.id as string, req.user!.userId);
     res.json({ success: true, message: 'Notification marked as read' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/send-by-email', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { email, title, body } = req.body;
+    if (!email || !title || !body) {
+      res.status(400).json({ success: false, message: 'Email, title, and body are required' });
+      return;
+    }
+
+    const snapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (snapshot.empty) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    const userData = snapshot.docs[0].data();
+    const token = userData.expoPushToken;
+    if (!token) {
+      res.status(400).json({ success: false, message: 'User has no Expo push token registered' });
+      return;
+    }
+
+    await expoPushService.sendToToken(token, title, body);
+    res.json({ success: true, message: `Push notification sent to ${email}` });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }
