@@ -118,4 +118,28 @@ router.post('/referral', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+router.get('/has-fullname', authenticate, async (req: Request, res: Response) => {
+  try {
+    const profile = await authService.getProfile(req.user!.userId);
+    const hasFullName = !!(profile.fullName && profile.fullName.trim().length > 0);
+    res.json({ success: true, hasFullName });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/fullname', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { fullName } = req.body;
+    if (!fullName || !fullName.trim()) {
+      res.status(400).json({ success: false, message: 'fullName is required' });
+      return;
+    }
+    await authService.updateProfile(req.user!.userId, { fullName: fullName.trim() });
+    res.json({ success: true, message: 'Full name saved' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 export default router;
