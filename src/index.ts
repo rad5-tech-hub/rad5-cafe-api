@@ -1,3 +1,5 @@
+import "./instrument.js";
+
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -24,6 +26,7 @@ import searchRoutes from './routes/search.js';
 import paymentsRoutes from './routes/payments.js';
 import adminDashboardRoutes from './routes/adminDashboard.js';
 import versionRoutes from './routes/version.js';
+import * as Sentry from "@sentry/node";
 import { errorHandler } from './middleware/error.js';
 
 const app = express();
@@ -114,6 +117,12 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 app.use('/api/docs.json', (_req, res) => {
   res.json(swaggerSpec);
 });
+
+app.get("/debug-sentry", function mainHandler(_req, _res) {
+  throw new Error("My first Sentry error!");
+});
+
+Sentry.setupExpressErrorHandler(app);
 
 app.use(errorHandler);
 
