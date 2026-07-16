@@ -99,7 +99,7 @@ router.put('/user/:id/read', authenticate, async (req: Request, res: Response) =
   }
 });
 
-router.post('/send-by-email', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/send-by-email', async (req: Request, res: Response) => {
   try {
     const { email, title, body } = req.body;
     if (!email || !title || !body) {
