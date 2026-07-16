@@ -117,9 +117,11 @@ export class OrderService {
       const isFirstPurchase = !txUser.hasMadeFirstPurchase;
       
       let txReferrerUser = null;
+      let txReferrerWalletDoc = null;
       if (isFirstPurchase && txUser.referredBy && referrerDocRef && referrerWalletRef) {
          const refUserDoc = await transaction.get(referrerDocRef);
          txReferrerUser = refUserDoc.data() as User;
+         txReferrerWalletDoc = await transaction.get(referrerWalletRef);
       }
 
       // Read wallet doc inside the transaction for consistency
@@ -161,9 +163,11 @@ export class OrderService {
             referrerReward = totalProfit * 0.05;
           }
           
-          if (referrerReward > 0) {
+          if (referrerReward > 0 && txReferrerWalletDoc && txReferrerWalletDoc.exists) {
+            const currentReferrerBalance = txReferrerWalletDoc.data()?.balance || 0;
+            const newReferrerBalance = Math.round((currentReferrerBalance + referrerReward + Number.EPSILON) * 100) / 100;
             transaction.update(referrerWalletRef, {
-              balance: FieldValue.increment(referrerReward),
+              balance: newReferrerBalance,
               updatedAt: Timestamp.now()
             });
             const refTxnRef = db.collection(TRANSACTIONS_COLLECTION).doc();
@@ -192,16 +196,25 @@ export class OrderService {
       }
       
       let walletUpdate: any = {};
+      const currentWalletData = txWalletDoc.data() || {};
+      const currentBalance = currentWalletData.balance || 0;
+      const currentTotalSpent = currentWalletData.totalSpent || 0;
+
+      let newBalance = currentBalance;
+      let newTotalSpent = currentTotalSpent;
+
       if (paymentMethod === 'wallet') {
-        walletUpdate.balance = FieldValue.increment(-subtotal);
-        walletUpdate.totalSpent = FieldValue.increment(subtotal);
-        walletUpdate.updatedAt = Timestamp.now();
+        newBalance -= subtotal;
+        newTotalSpent += subtotal;
       }
       if (buyerReward > 0) {
-        walletUpdate.balance = walletUpdate.balance ? FieldValue.increment(-subtotal + buyerReward) : FieldValue.increment(buyerReward);
-        walletUpdate.updatedAt = Timestamp.now();
+        newBalance += buyerReward;
       }
-      if (Object.keys(walletUpdate).length > 0) {
+
+      if (paymentMethod === 'wallet' || buyerReward > 0) {
+        walletUpdate.balance = Math.round((newBalance + Number.EPSILON) * 100) / 100;
+        walletUpdate.totalSpent = Math.round((newTotalSpent + Number.EPSILON) * 100) / 100;
+        walletUpdate.updatedAt = Timestamp.now();
         transaction.update(walletDoc.ref, walletUpdate);
       }
 
@@ -564,9 +577,13 @@ export class OrderService {
         createdAt: Timestamp.now(),
       } as unknown as Partial<Transaction>);
 
+      const currentTotalSpent = (walletTxnDoc.data()?.totalSpent || 0) as number;
+      const newBalance = Math.round((currentBalance - subtotal + Number.EPSILON) * 100) / 100;
+      const newTotalSpent = Math.round((currentTotalSpent + subtotal + Number.EPSILON) * 100) / 100;
+
       transaction.update(walletDoc.ref, {
-        balance: FieldValue.increment(-subtotal),
-        totalSpent: FieldValue.increment(subtotal),
+        balance: newBalance,
+        totalSpent: newTotalSpent,
         updatedAt: Timestamp.now(),
       });
 

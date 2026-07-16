@@ -51,10 +51,15 @@ export class TransferService {
 
     await db.runTransaction(async (transaction) => {
       const senderDoc = await transaction.get(senderWalletDoc.ref);
-      const currentBalance = (senderDoc.data()?.balance || 0) as number;
-      if (currentBalance < amount) {
+      const currentSenderBalance = (senderDoc.data()?.balance || 0) as number;
+      const currentSenderTotalSpent = (senderDoc.data()?.totalSpent || 0) as number;
+      if (currentSenderBalance < amount) {
         throw new Error('Insufficient balance');
       }
+
+      const recipientDoc = await transaction.get(recipientWalletDoc.ref);
+      if (!recipientDoc.exists) throw new Error('Recipient wallet not found');
+      const currentRecipientBalance = (recipientDoc.data()?.balance || 0) as number;
 
       transaction.set(transferRef, {
         senderWalletId,
@@ -97,14 +102,19 @@ export class TransferService {
         createdAt: Timestamp.now(),
       });
 
+      const newSenderBalance = Math.round((currentSenderBalance - amount + Number.EPSILON) * 100) / 100;
+      const newSenderTotalSpent = Math.round((currentSenderTotalSpent + amount + Number.EPSILON) * 100) / 100;
+
+      const newRecipientBalance = Math.round((currentRecipientBalance + netAmount + Number.EPSILON) * 100) / 100;
+
       transaction.update(senderWalletDoc.ref, {
-        balance: FieldValue.increment(-amount),
-        totalSpent: FieldValue.increment(amount),
+        balance: newSenderBalance,
+        totalSpent: newSenderTotalSpent,
         updatedAt: Timestamp.now(),
       });
 
       transaction.update(recipientWalletDoc.ref, {
-        balance: FieldValue.increment(netAmount),
+        balance: newRecipientBalance,
         updatedAt: Timestamp.now(),
       });
     });

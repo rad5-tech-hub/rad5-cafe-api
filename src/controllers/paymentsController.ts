@@ -155,9 +155,18 @@ async function finalizePaystackPayment(
         updatedAt: Timestamp.now(),
       });
 
+      const walletDoc = await txn.get(walletRef);
+      if (!walletDoc.exists) throw new Error('Customer wallet not found');
+      const walletData = walletDoc.data() || {};
+      const currentBalance = walletData.balance || 0;
+      const currentTotalFunded = walletData.totalFunded || 0;
+
+      const newBalance = Math.round((currentBalance + amountMain + Number.EPSILON) * 100) / 100;
+      const newTotalFunded = Math.round((currentTotalFunded + amountMain + Number.EPSILON) * 100) / 100;
+
       txn.update(walletRef, {
-        balance: FieldValue.increment(amountMain),
-        totalFunded: FieldValue.increment(amountMain),
+        balance: newBalance,
+        totalFunded: newTotalFunded,
         updatedAt: Timestamp.now(),
       });
 

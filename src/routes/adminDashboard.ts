@@ -652,9 +652,14 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
       if (!userDoc.exists) throw new Error('Customer user not found');
       
       const user = userDoc.data() as User;
-      const walletSnapshot = await db.collection('wallets').where('walletId', '==', user.walletId).limit(1).get();
-      if (walletSnapshot.empty) throw new Error('Customer wallet not found');
-      const walletDoc = walletSnapshot.docs[0]!;
+      const isCustomer = user.role !== 'admin';
+
+      let walletDoc: any = null;
+      if (isCustomer) {
+        const walletSnapshot = await db.collection('wallets').where('walletId', '==', user.walletId).limit(1).get();
+        if (walletSnapshot.empty) throw new Error('Customer wallet not found');
+        walletDoc = walletSnapshot.docs[0]!;
+      }
 
       // Check for buyer cashback reward transaction
       const rewardTxns = await db.collection('transactions')
@@ -690,6 +695,27 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
       }
 
       await db.runTransaction(async (transaction) => {
+        let currentBalance = 0;
+        let currentTotalSpent = 0;
+        let txWalletDoc = null;
+
+        if (isCustomer && walletDoc) {
+          txWalletDoc = await transaction.get(walletDoc.ref);
+          if (!txWalletDoc.exists) throw new Error('Customer wallet not found');
+          const walletData = txWalletDoc.data() || {};
+          currentBalance = walletData.balance || 0;
+          currentTotalSpent = walletData.totalSpent || 0;
+        }
+
+        let currentReferrerBalance = 0;
+        let txReferrerWalletDoc = null;
+        if (isCustomer && referrerWalletDoc && referrerAmount > 0) {
+          txReferrerWalletDoc = await transaction.get(referrerWalletDoc.ref);
+          if (txReferrerWalletDoc.exists) {
+            currentReferrerBalance = txReferrerWalletDoc.data()?.balance || 0;
+          }
+        }
+
         // 1. Revert product stocks
         for (const item of order.items) {
           const productRef = db.collection('products').doc(item.productId);
@@ -708,62 +734,68 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
           });
         }
 
-        // 2. Refund wallet balance (minus buyer cashback reward)
-        const netRefund = order.total - rewardAmount;
-        transaction.update(walletDoc.ref, {
-          balance: FieldValue.increment(netRefund),
-          totalSpent: FieldValue.increment(-order.total),
-          updatedAt: Timestamp.now(),
-        });
+        if (isCustomer && walletDoc) {
+          // 2. Refund wallet balance (minus buyer cashback reward)
+          const netRefund = order.total - rewardAmount;
+          const newBalance = Math.round((currentBalance + netRefund + Number.EPSILON) * 100) / 100;
+          const newTotalSpent = Math.round((currentTotalSpent - order.total + Number.EPSILON) * 100) / 100;
 
-        // 3. Create wallet refund transaction log
-        transaction.set(db.collection('transactions').doc(), {
-          walletId: user.walletId,
-          userId: order.userId,
-          type: 'funding',
-          amount: order.total,
-          fee: 0,
-          reference: `RFD-${order.receiptNumber}`,
-          description: `Refund for cancelled order ${order.receiptNumber}`,
-          status: 'completed',
-          paymentMethod: 'wallet',
-          createdAt: Timestamp.now(),
-        });
+          transaction.update(walletDoc.ref, {
+            balance: newBalance,
+            totalSpent: newTotalSpent,
+            updatedAt: Timestamp.now(),
+          });
 
-        // 4. Create reward revocation log if cashback was earned
-        if (rewardAmount > 0) {
+          // 3. Create wallet refund transaction log
           transaction.set(db.collection('transactions').doc(), {
             walletId: user.walletId,
             userId: order.userId,
-            type: 'reward',
-            amount: -rewardAmount,
+            type: 'funding',
+            amount: order.total,
             fee: 0,
-            reference: `RWR-${order.receiptNumber}`,
-            description: `Cashback revoked for cancelled order ${order.receiptNumber}`,
+            reference: `RFD-${order.receiptNumber}`,
+            description: `Refund for cancelled order ${order.receiptNumber}`,
             status: 'completed',
             paymentMethod: 'wallet',
             createdAt: Timestamp.now(),
           });
-        }
 
-        // 5. Revert Referrer reward if any
-        if (referrerWalletDoc && referrerAmount > 0) {
-          transaction.update(referrerWalletDoc.ref, {
-            balance: FieldValue.increment(-referrerAmount),
-            updatedAt: Timestamp.now(),
-          });
-          transaction.set(db.collection('transactions').doc(), {
-            walletId: referrerWalletDoc.data().walletId,
-            userId: referrerUserId,
-            type: 'reward',
-            amount: -referrerAmount,
-            fee: 0,
-            reference: `RWR-REF-${order.receiptNumber}`,
-            description: `Referral reward revoked for cancelled order ${order.receiptNumber}`,
-            status: 'completed',
-            paymentMethod: 'wallet',
-            createdAt: Timestamp.now(),
-          });
+          // 4. Create reward revocation log if cashback was earned
+          if (rewardAmount > 0) {
+            transaction.set(db.collection('transactions').doc(), {
+              walletId: user.walletId,
+              userId: order.userId,
+              type: 'reward',
+              amount: -rewardAmount,
+              fee: 0,
+              reference: `RWR-${order.receiptNumber}`,
+              description: `Cashback revoked for cancelled order ${order.receiptNumber}`,
+              status: 'completed',
+              paymentMethod: 'wallet',
+              createdAt: Timestamp.now(),
+            });
+          }
+
+          // 5. Revert Referrer reward if any
+          if (txReferrerWalletDoc && txReferrerWalletDoc.exists && referrerAmount > 0) {
+            const newReferrerBalance = Math.round((currentReferrerBalance - referrerAmount + Number.EPSILON) * 100) / 100;
+            transaction.update(referrerWalletDoc.ref, {
+              balance: newReferrerBalance,
+              updatedAt: Timestamp.now(),
+            });
+            transaction.set(db.collection('transactions').doc(), {
+              walletId: referrerWalletDoc.data().walletId,
+              userId: referrerUserId,
+              type: 'reward',
+              amount: -referrerAmount,
+              fee: 0,
+              reference: `RWR-REF-${order.receiptNumber}`,
+              description: `Referral reward revoked for cancelled order ${order.receiptNumber}`,
+              status: 'completed',
+              paymentMethod: 'wallet',
+              createdAt: Timestamp.now(),
+            });
+          }
         }
 
         // 6. Update order status
@@ -775,20 +807,22 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
         });
       });
       
-      const { expoPushService } = await import('../services/expo-push.js');
-      const { notificationService } = await import('../services/notifications.js');
-      void expoPushService.sendToUser(
-        order.userId,
-        'Order Cancelled',
-        `Your order ${order.receiptNumber} has been cancelled and ₦${order.total.toLocaleString()} was refunded to your wallet.`,
-        { type: 'order_cancelled', orderId }
-      );
-      void notificationService.createUserNotification({
-        userId: order.userId,
-        type: 'info',
-        title: 'Order Cancelled',
-        body: `Your order ${order.receiptNumber} has been cancelled and ₦${order.total.toLocaleString()} was refunded to your wallet.`,
-      });
+      if (isCustomer) {
+        const { expoPushService } = await import('../services/expo-push.js');
+        const { notificationService } = await import('../services/notifications.js');
+        void expoPushService.sendToUser(
+          order.userId,
+          'Order Cancelled',
+          `Your order ${order.receiptNumber} has been cancelled and ₦${order.total.toLocaleString()} was refunded to your wallet.`,
+          { type: 'order_cancelled', orderId }
+        );
+        void notificationService.createUserNotification({
+          userId: order.userId,
+          type: 'info',
+          title: 'Order Cancelled',
+          body: `Your order ${order.receiptNumber} has been cancelled and ₦${order.total.toLocaleString()} was refunded to your wallet.`,
+        });
+      }
     } else {
       await orderRef.update({ status, updatedAt: Timestamp.now() });
     }
@@ -1037,13 +1071,24 @@ router.post('/wallet/adjust', authenticateAdmin, async (req: Request, res: Respo
         }
       }
 
+      const currentTotalFunded = currentWalletData.totalFunded || 0;
+      const currentTotalSpent = currentWalletData.totalSpent || 0;
+
+      const newBalance = Math.round((currentBalance + amt + Number.EPSILON) * 100) / 100;
+      let newTotalFunded = currentTotalFunded;
+      let newTotalSpent = currentTotalSpent;
+
+      if (amt > 0) {
+        newTotalFunded = Math.round((currentTotalFunded + amt + Number.EPSILON) * 100) / 100;
+      } else {
+        newTotalSpent = Math.round((currentTotalSpent + Math.abs(amt) + Number.EPSILON) * 100) / 100;
+      }
+
       // 1. Update wallet balance
       transaction.update(walletDoc.ref, {
-        balance: FieldValue.increment(amt),
-        ...(amt > 0 
-          ? { totalFunded: FieldValue.increment(amt) } 
-          : { totalSpent: FieldValue.increment(Math.abs(amt)) }
-        ),
+        balance: newBalance,
+        totalFunded: newTotalFunded,
+        totalSpent: newTotalSpent,
         updatedAt: Timestamp.now(),
       });
 
