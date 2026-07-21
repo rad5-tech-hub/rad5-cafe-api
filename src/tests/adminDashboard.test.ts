@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'bun:test';
 import bcryptjs from 'bcryptjs';
+import { describe, expect, it } from 'bun:test';
 import { env } from '../config/env';
 
 // Custom lightweight JWT mock implementation to verify signing/verification concepts

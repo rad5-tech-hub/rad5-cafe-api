@@ -88,6 +88,7 @@ export interface Order {
   status: 'pending' | 'completed' | 'cancelled';
   paymentMethod?: 'wallet' | 'cash';
   source?: 'web' | 'mobile';
+  enteredBy?: string;
   reconciliationStatus?: 'none' | 'limbo' | 'reconciled';
   reconciledBy?: string;
   reconciledAt?: admin.firestore.Timestamp;

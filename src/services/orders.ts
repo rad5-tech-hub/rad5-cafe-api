@@ -240,10 +240,9 @@ export class OrderService {
         });
       }
 
-      transaction.set(orderRef, {
+      const orderPayload: Partial<Order> = {
         receiptNumber,
         userId,
-        userName: user.fullName,
         walletId: user.walletId,
         customerName: customerName || null,
         items: orderItems,
@@ -251,22 +250,30 @@ export class OrderService {
         total: subtotal,
         status: 'completed',
         paymentMethod,
+        enteredBy: userId,
         reconciliationStatus: paymentMethod === 'cash' ? 'limbo' : 'none',
         issued: false,
         createdAt: Timestamp.now(),
-      } as unknown as Partial<Order>);
+      };
+      if (paymentMethod !== 'cash') {
+        orderPayload.userName = user.fullName;
+      }
+      transaction.set(orderRef, orderPayload as any);
 
-      transaction.set(receiptRef, {
+      const receiptPayload: Partial<Receipt> = {
         receiptNumber,
         orderId: orderRef.id,
         userId,
-        userName: user.fullName,
         walletId: user.walletId,
         items: orderItems,
         subtotal,
         total: subtotal,
         createdAt: Timestamp.now(),
-      } as unknown as Partial<Receipt>);
+      };
+      if (paymentMethod !== 'cash') {
+        receiptPayload.userName = user.fullName;
+      }
+      transaction.set(receiptRef, receiptPayload as any);
 
       if (paymentMethod === 'wallet') {
         transaction.set(txnRef, {
@@ -328,7 +335,8 @@ export class OrderService {
       id: orderRef.id,
       receiptNumber,
       userId,
-      userName: user.fullName,
+      enteredBy: userId,
+      userName: paymentMethod === 'cash' ? undefined : user.fullName,
       walletId: user.walletId,
       customerName: customerName || null,
       items: orderItems,
@@ -346,7 +354,7 @@ export class OrderService {
       receiptNumber,
       orderId: orderRef.id,
       userId,
-      userName: user.fullName,
+      userName: paymentMethod === 'cash' ? undefined : user.fullName,
       walletId: user.walletId,
       items: orderItems,
       subtotal,
@@ -461,25 +469,35 @@ export class OrderService {
 
     const userIds = new Set<string>();
     orders.forEach(order => {
-      if (!order.userName && order.userId) userIds.add(order.userId);
+      if (order.enteredBy) userIds.add(order.enteredBy);
+      else if (order.userId) userIds.add(order.userId);
     });
 
-    const userMap: Record<string, { email: string }> = {};
+    const userMap: Record<string, { email: string, fullName: string }> = {};
     if (userIds.size > 0) {
       const userRefs = Array.from(userIds).map(id => db.collection(USERS_COLLECTION).doc(id));
       const userDocs = await db.getAll(...userRefs);
       userDocs.forEach(doc => {
         if (doc.exists) {
-          const data = doc.data() as { email: string };
-          userMap[doc.id] = { email: data.email };
+          const data = doc.data() as { email: string, fullName: string };
+          userMap[doc.id] = { email: data.email, fullName: data.fullName || data.email.split('@')[0] };
         }
       });
     }
 
-    const enhancedOrders = orders.map(order => ({
-      ...order,
-      userName: order.userName || (order.userId && userMap[order.userId] ? userMap[order.userId].email : undefined),
-    }));
+    const enhancedOrders = orders.map(order => {
+      let resolvedUserName = order.userName;
+      if (order.enteredBy && userMap[order.enteredBy]) {
+        resolvedUserName = userMap[order.enteredBy].fullName;
+      } else if (!order.userName && order.userId && userMap[order.userId]) {
+        resolvedUserName = userMap[order.userId].fullName;
+      }
+      
+      return {
+        ...order,
+        userName: resolvedUserName,
+      };
+    });
 
     return { orders: enhancedOrders, total };
   }
@@ -500,6 +518,7 @@ export class OrderService {
     orders.forEach(order => {
       if (order.userId) userIds.add(order.userId);
       if (order.reconciledBy) userIds.add(order.reconciledBy);
+      if (order.enteredBy) userIds.add(order.enteredBy);
     });
 
     const userMap: Record<string, { fullName: string; email: string }> = {};
@@ -509,16 +528,26 @@ export class OrderService {
       userDocs.forEach(doc => {
         if (doc.exists) {
           const data = doc.data() as { fullName: string; email: string };
-          userMap[doc.id] = { fullName: data.fullName, email: data.email };
+          userMap[doc.id] = { fullName: data.fullName || data.email.split('@')[0], email: data.email };
         }
       });
     }
 
-    const enhancedOrders = orders.map(order => ({
-      ...order,
-      reconciledByName: order.reconciledBy && userMap[order.reconciledBy] ? userMap[order.reconciledBy].fullName : 'Unknown Admin',
-      customerAccountName: order.userId && userMap[order.userId] ? userMap[order.userId].fullName : 'Unknown Customer',
-    }));
+    const enhancedOrders = orders.map(order => {
+      let resolvedUserName = order.userName;
+      if (order.enteredBy && userMap[order.enteredBy]) {
+        resolvedUserName = userMap[order.enteredBy].fullName;
+      } else if (!order.userName && order.userId && userMap[order.userId]) {
+        resolvedUserName = userMap[order.userId].fullName;
+      }
+
+      return {
+        ...order,
+        reconciledByName: order.reconciledBy && userMap[order.reconciledBy] ? userMap[order.reconciledBy].fullName : 'Unknown Admin',
+        customerAccountName: order.userId && userMap[order.userId] ? userMap[order.userId].fullName : 'Unknown Customer',
+        userName: resolvedUserName,
+      };
+    });
 
     return { orders: enhancedOrders, total };
   }
