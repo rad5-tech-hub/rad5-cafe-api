@@ -1,6 +1,6 @@
 import { db, Timestamp } from '../config/firebase.js';
 import crypto from 'crypto';
-import { User } from '../types/index.js';
+import { User, PinChangeRequest } from '../types/index.js';
 import { hashPin } from '../utils/pin-hash.js';
 import { sanitizeUserData } from '../utils/helpers.js';
 
@@ -111,6 +111,177 @@ export class AuthService {
       referralMethod: method,
       updatedAt: Timestamp.now(),
     });
+  }
+
+  async requestPinChange(userId: string, newPin: string): Promise<void> {
+    if (!/^\d{4}$/.test(newPin)) throw new Error('PIN must be exactly 4 digits');
+
+    const userRef = db.collection(USERS_COLLECTION).doc(userId);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) throw new Error('User not found');
+    const user = userDoc.data() as User;
+
+    // Check if there is an existing PENDING request
+    const pendingSnapshot = await db.collection('pin_change_requests')
+      .where('userId', '==', userId)
+      .where('status', '==', 'PENDING')
+      .limit(1)
+      .get();
+
+    const hashedPin = await hashPin(newPin);
+
+    if (!pendingSnapshot.empty) {
+      const reqRef = pendingSnapshot.docs[0].ref;
+      await reqRef.update({
+        preferredPin: hashedPin,
+        requestedAt: Timestamp.now(),
+      });
+    } else {
+      const reqRef = db.collection('pin_change_requests').doc();
+      await reqRef.set({
+        userId,
+        uid: user.uid,
+        email: user.email,
+        fullName: user.fullName || '',
+        preferredPin: hashedPin,
+        status: 'PENDING',
+        requestedAt: Timestamp.now(),
+      });
+    }
+  }
+
+  async getLatestPinChangeRequest(userId: string): Promise<Partial<PinChangeRequest> | null> {
+    const snapshot = await db.collection('pin_change_requests')
+      .where('userId', '==', userId)
+      .orderBy('requestedAt', 'desc')
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    const data = doc.data() as PinChangeRequest;
+    const { preferredPin, id, ...safeData } = data;
+    return { id: doc.id, ...safeData };
+  }
+
+  async getPinChangeRequests(status?: string, page: number = 1, limit: number = 20): Promise<{ requests: Partial<PinChangeRequest>[]; total: number }> {
+    let query: FirebaseFirestore.Query = db.collection('pin_change_requests');
+    if (status) {
+      query = query.where('status', '==', status);
+    }
+    query = query.orderBy('requestedAt', 'desc');
+
+    const countSnapshot = await query.count().get();
+    const total = countSnapshot.data().count;
+
+    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
+    const requests = snapshot.docs.map(doc => {
+      const data = doc.data() as PinChangeRequest;
+      const { preferredPin, id, ...safeData } = data;
+      return { id: doc.id, ...safeData };
+    });
+
+    return { requests, total };
+  }
+
+  async approvePinChangeRequest(requestId: string, adminUserId: string, pinConfirm: string): Promise<{ userId: string }> {
+    const reqRef = db.collection('pin_change_requests').doc(requestId);
+    const reqDoc = await reqRef.get();
+    if (!reqDoc.exists) throw new Error('PIN change request not found');
+
+    const request = reqDoc.data() as PinChangeRequest;
+    if (request.status !== 'PENDING') {
+      throw new Error(`Request is already ${request.status.toLowerCase()}`);
+    }
+
+    const { verifyPin } = await import('../utils/pin-hash.js');
+    const isMatch = await verifyPin(pinConfirm, request.preferredPin);
+    if (!isMatch) {
+      throw new Error("The entered PIN does not match the user's preferred PIN");
+    }
+
+    const userRef = db.collection(USERS_COLLECTION).doc(request.userId);
+
+    await db.runTransaction(async (transaction) => {
+      transaction.update(userRef, {
+        pin: request.preferredPin,
+        pinSetup: true,
+        updatedAt: Timestamp.now(),
+      });
+      transaction.update(reqRef, {
+        status: 'APPROVED',
+        approvedBy: adminUserId,
+        approvedAt: Timestamp.now(),
+      });
+    });
+
+    try {
+      const { expoPushService } = await import('./expo-push.js');
+      const { notificationService } = await import('./notifications.js');
+
+      void expoPushService.sendToUser(
+        request.userId,
+        'PIN Changed Successfully',
+        'Your request for PIN change has been approved and updated.',
+        { type: 'pin_changed' }
+      );
+
+      void notificationService.createUserNotification({
+        userId: request.userId,
+        type: 'info',
+        title: 'PIN Changed Successfully',
+        body: 'Your request for PIN change has been approved and updated.',
+      });
+    } catch (err) {
+      console.warn('Failed to send pin change notification:', err);
+    }
+
+    return { userId: request.userId };
+  }
+
+  async rejectPinChangeRequest(requestId: string, adminUserId: string, reason?: string): Promise<{ userId: string }> {
+    const reqRef = db.collection('pin_change_requests').doc(requestId);
+    const reqDoc = await reqRef.get();
+    if (!reqDoc.exists) throw new Error('PIN change request not found');
+
+    const request = reqDoc.data() as PinChangeRequest;
+    if (request.status !== 'PENDING') {
+      throw new Error(`Request is already ${request.status.toLowerCase()}`);
+    }
+
+    await reqRef.update({
+      status: 'REJECTED',
+      rejectedBy: adminUserId,
+      rejectedAt: Timestamp.now(),
+      rejectReason: reason || '',
+    });
+
+    try {
+      const { expoPushService } = await import('./expo-push.js');
+      const { notificationService } = await import('./notifications.js');
+
+      const bodyText = reason 
+        ? `Your request for PIN change was rejected by admin. Reason: ${reason}`
+        : 'Your request for PIN change was rejected by admin.';
+
+      void expoPushService.sendToUser(
+        request.userId,
+        'PIN Change Request Rejected',
+        bodyText,
+        { type: 'pin_change_rejected' }
+      );
+
+      void notificationService.createUserNotification({
+        userId: request.userId,
+        type: 'info',
+        title: 'PIN Change Request Rejected',
+        body: bodyText,
+      });
+    } catch (err) {
+      console.warn('Failed to send pin change rejection notification:', err);
+    }
+
+    return { userId: request.userId };
   }
 }
 

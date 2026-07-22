@@ -8,6 +8,7 @@ import { promoteToAdmin, demoteFromAdmin } from '../utils/firebase-custom-claims
 import { notificationService } from '../services/notifications.js';
 import { orderService } from '../services/orders.js';
 import { verifyPin } from '../utils/pin-hash.js';
+import { authService } from '../services/auth.js';
 
 const USERS_COLLECTION = 'users';
 
@@ -271,6 +272,57 @@ router.delete('/orders/:orderId', authenticate, requireAdmin, async (req: Reques
     }
 
     res.json({ success: true, message: 'Order deleted successfully', data: result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/pin-change-requests', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const status = req.query.status as string | undefined;
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+
+    const result = await authService.getPinChangeRequests(status, page, limit);
+    res.json({
+      success: true,
+      data: result.requests,
+      total: result.total,
+      page,
+      limit,
+      totalPages: Math.ceil(result.total / limit)
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/pin-change-requests/:id/approve', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) {
+      res.status(400).json({ success: false, message: 'Confirming PIN is required' });
+      return;
+    }
+
+    const result = await authService.approvePinChangeRequest(req.params.id as string, req.user!.userId, pin);
+    
+    logAudit(req.user!.userId, 'approve_pin_change', 'pin_change_requests', req.params.id as string, { customerUserId: result.userId }, req);
+
+    res.json({ success: true, message: 'PIN change request approved and PIN updated' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/pin-change-requests/:id/reject', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { reason } = req.body;
+    const result = await authService.rejectPinChangeRequest(req.params.id as string, req.user!.userId, reason);
+
+    logAudit(req.user!.userId, 'reject_pin_change', 'pin_change_requests', req.params.id as string, { customerUserId: result.userId, reason: reason || '' }, req);
+
+    res.json({ success: true, message: 'PIN change request rejected' });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

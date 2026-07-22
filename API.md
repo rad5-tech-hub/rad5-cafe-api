@@ -65,6 +65,9 @@ All authenticated endpoints require a **Firebase ID token** sent in the `Authori
 | `POST` | `/setup-pin` | Yes | `{ pin }` — exactly 4 digits | `{ message: "PIN set up successfully" }` |
 | `POST` | `/change-pin` | Yes | `{ oldPin, newPin }` | `{ message: "PIN changed successfully" }` |
 | `POST` | `/expo-push-token` | Yes | `{ token }` — Expo push token | `{ message: "Push token saved" }` |
+| `POST` | `/request-pin-change` | Yes | `{ pin }` — preferred PIN (4 digits) | `{ message: "PIN change request submitted successfully" }` |
+| `GET` | `/pin-change-request` | Yes | — | Latest request details (excluding `preferredPin`) |
+
 
 ### Wallet `/wallet`
 
@@ -147,6 +150,10 @@ All authenticated endpoints require a **Firebase ID token** sent in the `Authori
 |--------|----------|------|-------------|----------|
 | `GET` | `/users` | **Admin** | `?page=1&limit=20` | Paginated users (sanitized — no pin/password) |
 | `PUT` | `/users/:id/toggle-status` | **Admin** | — | `{ message: "User activated/deactivated" }` |
+| `GET` | `/pin-change-requests` | **Admin** | `?status=PENDING&page=1&limit=20` | Paginated pin change requests |
+| `POST` | `/pin-change-requests/:id/approve` | **Admin** | `{ pin }` — User's preferred PIN | `{ message: "PIN change request approved and PIN updated" }` |
+| `POST` | `/pin-change-requests/:id/reject` | **Admin** | `{ reason? }` | `{ message: "PIN change request rejected" }` |
+
 
 ### Search `/search`
 

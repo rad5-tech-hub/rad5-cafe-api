@@ -244,7 +244,7 @@ export class OrderService {
         receiptNumber,
         userId,
         walletId: user.walletId,
-        customerName: customerName || null,
+        customerName: customerName || undefined,
         items: orderItems,
         subtotal,
         total: subtotal,

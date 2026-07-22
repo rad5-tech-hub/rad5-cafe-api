@@ -142,4 +142,27 @@ router.put('/fullname', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+router.post('/request-pin-change', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { pin } = req.body;
+    if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) {
+      res.status(400).json({ success: false, message: 'PIN must be exactly 4 digits' });
+      return;
+    }
+    await authService.requestPinChange(req.user!.userId, pin);
+    res.json({ success: true, message: 'PIN change request submitted successfully' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/pin-change-request', authenticate, async (req: Request, res: Response) => {
+  try {
+    const request = await authService.getLatestPinChangeRequest(req.user!.userId);
+    res.json({ success: true, data: request });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 export default router;

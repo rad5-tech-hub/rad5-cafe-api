@@ -247,3 +247,20 @@ export interface Expense {
   createdBy: string;
   createdAt: admin.firestore.Timestamp;
 }
+
+export interface PinChangeRequest {
+  id: string;
+  userId: string;
+  uid: string;
+  email: string;
+  fullName: string;
+  preferredPin: string; // Hashed pin
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedAt: admin.firestore.Timestamp;
+  approvedAt?: admin.firestore.Timestamp;
+  approvedBy?: string;
+  rejectedAt?: admin.firestore.Timestamp;
+  rejectedBy?: string;
+  rejectReason?: string;
+}
+
