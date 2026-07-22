@@ -36,7 +36,10 @@ function initFirebase(): admin.app.App {
 
 const app = initFirebase();
 const dbId = env.firebase.databaseId;
-export const db = dbId === '(default)' ? admin.firestore(app) : getFirestore(app, dbId);
+const dbInstance = dbId === '(default)' ? admin.firestore(app) : getFirestore(app, dbId);
+dbInstance.settings({ ignoreUndefinedProperties: true });
+
+export const db = dbInstance;
 export const auth = admin.auth(app);
 export const storage = admin.storage(app);
 export const FieldValue = admin.firestore.FieldValue;
