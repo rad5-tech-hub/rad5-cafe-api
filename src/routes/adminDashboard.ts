@@ -536,6 +536,7 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
         revenue: order.total,
         profit,
         status: order.status,
+        reconciliationStatus: order.reconciliationStatus || 'none',
         issued: order.issued ?? false,
         issuedBy: order.issuedBy || null,
         issuedAt: order.issuedAt?.toDate?.()?.toISOString() || null,
@@ -639,6 +640,14 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
 
     const order = orderDoc.data() as Order;
     const oldStatus = order.status;
+
+    if (order.reconciliationStatus === 'limbo') {
+      res.status(400).json({
+        success: false,
+        message: 'This is an unreconciled cash order. Manage it from Cash Orders instead of Sales.',
+      });
+      return;
+    }
 
     if (oldStatus === status) {
       res.status(400).json({ success: false, message: `Order status is already ${status}` });
