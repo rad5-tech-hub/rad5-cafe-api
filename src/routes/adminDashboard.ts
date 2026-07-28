@@ -485,7 +485,7 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
       return q;
     };
 
-    const aggregateQuery = buildQuery().select('total', 'items');
+    const aggregateQuery = buildQuery().select('total', 'items', 'status', 'reconciliationStatus');
     const pageQuery = buildQuery().offset((page - 1) * limit).limit(limit);
 
     const [aggregateSnapshot, countSnapshot, pageSnapshot] = await Promise.all([
@@ -501,6 +501,7 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
     for (const doc of aggregateSnapshot.docs) {
       const d = doc.data();
       if (d.reconciliationStatus === 'limbo') continue;
+      if (d.status === 'cancelled') continue;
       totalRevenue += d.total || 0;
       totalProfit += (d.items || []).reduce((sum: number, item: any) =>
         sum + (item.unitPrice - item.costPrice) * item.quantity, 0);
