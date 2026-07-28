@@ -13,6 +13,7 @@ import { categoryService } from '../services/categories.js';
 import { notificationService } from '../services/notifications.js';
 import { orderService } from '../services/orders.js';
 import { productService } from '../services/products.js';
+import { stockBalanceService } from '../services/stockBalance.js';
 import { AuditLog, Order, Product, Transaction, User, Wallet } from '../types/index.js';
 import { hashPin, verifyPin } from '../utils/pin-hash.js';
 
@@ -1455,6 +1456,58 @@ router.get('/sales-ledger/expenses', authenticateAdmin, async (req: Request, res
       limit,
       totalPages: Math.ceil(total / limit),
     });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+// ─── STOCK BALANCE OUT ──────────────────────────────────────
+
+/**
+ * Get remaining stock summary (quantity & value) for balance-out
+ */
+router.get('/stock-balance/summary', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const summary = await stockBalanceService.getSummary();
+    res.json({ success: true, data: summary });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Balance out remaining stock value against profit (recorded as a loss)
+ */
+router.post('/stock-balance', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const { amount, note, pin } = req.body;
+
+    if (amount === undefined || amount === null || Number(amount) <= 0) {
+      res.status(400).json({ success: false, message: 'A positive amount is required' });
+      return;
+    }
+
+    await verifyAdminPin(req.user!.userId, pin);
+
+    const record = await stockBalanceService.createBalanceOut(Number(amount), str(note), req.user!.userId);
+
+    void logAudit(req.user!.userId, 'balance_out_stock', 'stock_balance_outs', record.id, record as unknown as Record<string, unknown>, req);
+
+    res.status(201).json({ success: true, message: 'Stock balanced out successfully', data: record });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Get stock balance-out history
+ */
+router.get('/stock-balance', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const page = num(req.query.page, 1);
+    const limit = num(req.query.limit, 20);
+    const result = await stockBalanceService.list(page, limit);
+    res.json({ success: true, ...result });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

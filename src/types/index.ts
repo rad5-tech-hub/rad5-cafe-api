@@ -248,6 +248,16 @@ export interface Expense {
   createdAt: admin.firestore.Timestamp;
 }
 
+export interface StockBalanceOut {
+  id: string;
+  amount: number;
+  note: string;
+  stockQuantitySnapshot: number;
+  stockValueSnapshot: number;
+  createdBy: string;
+  createdAt: admin.firestore.Timestamp;
+}
+
 export interface PinChangeRequest {
   id: string;
   userId: string;

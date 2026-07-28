@@ -9,7 +9,7 @@ const WALLETS_COLLECTION = 'wallets';
 
 export class AnalyticsService {
   async getDashboardStats(): Promise<{
-    today: { revenue: number; profit: number; salesCount: number; rewardsGiven: number };
+    today: { revenue: number; profit: number; salesCount: number; rewardsGiven: number; stockBalancedOut: number };
     inventory: { totalProducts: number; lowStock: number; outOfStock: number };
     customers: { total: number; active: number };
     wallet: { totalValue: number; totalTransactions: number; unreconciledLimboTotal: number; unreconciledLimboCount: number };
@@ -28,6 +28,7 @@ export class AnalyticsService {
       expensesSnapshot,
       limboOrdersSnapshot,
       rewardsSnapshot,
+      stockBalanceOutsSnapshot,
     ] = await Promise.all([
       db.collection(ORDERS_COLLECTION)
         .where('createdAt', '>=', todayTimestamp)
@@ -50,6 +51,9 @@ export class AnalyticsService {
         .get(),
       db.collection(TRANSACTIONS_COLLECTION)
         .where('type', '==', 'reward')
+        .where('createdAt', '>=', todayTimestamp)
+        .get(),
+      db.collection('stock_balance_outs')
         .where('createdAt', '>=', todayTimestamp)
         .get(),
     ]);
@@ -81,9 +85,16 @@ export class AnalyticsService {
       todayRewardsGiven += rw.amount || 0;
     }
 
+    let todayStockBalancedOut = 0;
+    for (const doc of stockBalanceOutsSnapshot.docs) {
+      const bal = doc.data();
+      todayStockBalancedOut += bal.amount || 0;
+    }
+
     todayRevenue -= todayExpenses;
     todayProfit -= todayExpenses;
     todayProfit -= todayRewardsGiven;
+    todayProfit -= todayStockBalancedOut;
 
     const products = productsSnapshot.docs.map(d => d.data() as Product);
     const totalProducts = products.length;
@@ -113,7 +124,7 @@ export class AnalyticsService {
     const unreconciledLimboCount = limboOrders.length;
 
     return {
-      today: { revenue: todayRevenue, profit: todayProfit, salesCount, rewardsGiven: todayRewardsGiven },
+      today: { revenue: todayRevenue, profit: todayProfit, salesCount, rewardsGiven: todayRewardsGiven, stockBalancedOut: todayStockBalancedOut },
       inventory: { totalProducts, lowStock, outOfStock },
       customers: { total: totalUsers, active: activeUsers },
       wallet: { totalValue, totalTransactions, unreconciledLimboTotal, unreconciledLimboCount },
