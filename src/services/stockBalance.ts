@@ -1,8 +1,9 @@
-import { db, Timestamp } from '../config/firebase.js';
+import { db, FieldValue, Timestamp } from '../config/firebase.js';
 import { Order, Product, StockBalanceOut } from '../types/index.js';
 
 const PRODUCTS_COLLECTION = 'products';
 const ORDERS_COLLECTION = 'orders';
+const STOCK_HISTORY_COLLECTION = 'stock_history';
 const STOCK_BALANCE_COLLECTION = 'stock_balance_outs';
 
 export interface StockLedgerRow {
@@ -90,27 +91,59 @@ export class StockBalanceService {
     };
   }
 
-  async createBalanceOut(amount: number, note: string, adminId: string): Promise<StockBalanceOut> {
-    if (amount <= 0) throw new Error('Amount must be positive');
+  async createBalanceOut(productId: string, quantity: number, note: string, adminId: string): Promise<StockBalanceOut> {
+    if (quantity <= 0) throw new Error('Quantity must be positive');
 
-    const { totalQuantity, totalValue } = await this.computeStockBreakdown();
+    const productRef = db.collection(PRODUCTS_COLLECTION).doc(productId);
+    const balanceRef = db.collection(STOCK_BALANCE_COLLECTION).doc();
+    const historyRef = db.collection(STOCK_HISTORY_COLLECTION).doc();
 
-    if (amount > totalValue) {
-      throw new Error(`Amount exceeds remaining stock value. Remaining stock value: ${totalValue}`);
-    }
+    return db.runTransaction(async (transaction) => {
+      const productDoc = await transaction.get(productRef);
+      if (!productDoc.exists) throw new Error('Product not found');
 
-    const ref = db.collection(STOCK_BALANCE_COLLECTION).doc();
-    const record = {
-      amount,
-      note: note || '',
-      stockQuantitySnapshot: totalQuantity,
-      stockValueSnapshot: totalValue,
-      createdBy: adminId,
-      createdAt: Timestamp.now(),
-    };
+      const product = productDoc.data() as Product;
+      if (product.quantity < quantity) {
+        throw new Error(`Cannot balance out more than available stock. Available: ${product.quantity}, requested: ${quantity}`);
+      }
 
-    await ref.set(record);
-    return { id: ref.id, ...record } as StockBalanceOut;
+      const costPrice = product.costPrice || 0;
+      const amount = costPrice * quantity;
+      const remainingQuantity = product.quantity - quantity;
+
+      transaction.update(productRef, {
+        quantity: FieldValue.increment(-quantity),
+        totalAdded: FieldValue.increment(-quantity),
+        updatedAt: Timestamp.now(),
+      });
+
+      transaction.set(historyRef, {
+        productId,
+        type: 'balanced_out',
+        quantity,
+        costPrice,
+        previousStock: product.quantity,
+        newStock: remainingQuantity,
+        reference: `BALANCE-${Date.now()}`,
+        reason: note || '',
+        createdAt: Timestamp.now(),
+      });
+
+      const record = {
+        productId,
+        productName: product.name,
+        quantity,
+        costPrice,
+        amount,
+        note: note || '',
+        remainingQuantity,
+        createdBy: adminId,
+        createdAt: Timestamp.now(),
+      };
+      transaction.set(balanceRef, record);
+
+      return { id: balanceRef.id, ...record } as StockBalanceOut;
+    });
   }
 
   async list(page: number, limit: number): Promise<{ data: unknown[]; total: number; page: number; limit: number; totalPages: number }> {

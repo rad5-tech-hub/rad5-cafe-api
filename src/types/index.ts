@@ -142,7 +142,7 @@ export interface Transfer {
 export interface StockHistory {
   id: string;
   productId: string;
-  type: 'added' | 'sold' | 'adjusted' | 'removed' | 'cancel_and_refund';
+  type: 'added' | 'sold' | 'adjusted' | 'removed' | 'cancel_and_refund' | 'balanced_out';
   userId?: string;
   quantity: number;
   costPrice?: number;
@@ -250,10 +250,13 @@ export interface Expense {
 
 export interface StockBalanceOut {
   id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  costPrice: number;
   amount: number;
   note: string;
-  stockQuantitySnapshot: number;
-  stockValueSnapshot: number;
+  remainingQuantity: number;
   createdBy: string;
   createdAt: admin.firestore.Timestamp;
 }

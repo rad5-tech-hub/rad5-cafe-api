@@ -1481,16 +1481,21 @@ router.get('/stock-balance/summary', authenticateAdmin, async (req: Request, res
  */
 router.post('/stock-balance', authenticateAdmin, async (req: Request, res: Response) => {
   try {
-    const { amount, note, pin } = req.body;
+    const { productId, quantity, note, pin } = req.body;
 
-    if (amount === undefined || amount === null || Number(amount) <= 0) {
-      res.status(400).json({ success: false, message: 'A positive amount is required' });
+    if (!productId) {
+      res.status(400).json({ success: false, message: 'A product must be selected' });
+      return;
+    }
+
+    if (quantity === undefined || quantity === null || Number(quantity) <= 0) {
+      res.status(400).json({ success: false, message: 'A positive quantity is required' });
       return;
     }
 
     await verifyAdminPin(req.user!.userId, pin);
 
-    const record = await stockBalanceService.createBalanceOut(Number(amount), str(note), req.user!.userId);
+    const record = await stockBalanceService.createBalanceOut(str(productId), Number(quantity), str(note), req.user!.userId);
 
     void logAudit(req.user!.userId, 'balance_out_stock', 'stock_balance_outs', record.id, record as unknown as Record<string, unknown>, req);
 
