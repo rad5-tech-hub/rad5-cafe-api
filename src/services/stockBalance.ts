@@ -40,10 +40,7 @@ export class StockBalanceService {
   }
 
   private async computeLifetimeProfit(): Promise<number> {
-    const [ordersSnapshot, expensesSnapshot] = await Promise.all([
-      db.collection(ORDERS_COLLECTION).get(),
-      db.collection('expenses').get(),
-    ]);
+    const ordersSnapshot = await db.collection(ORDERS_COLLECTION).get();
 
     let totalProfit = 0;
     ordersSnapshot.docs.forEach(doc => {
@@ -55,12 +52,7 @@ export class StockBalanceService {
       }
     });
 
-    let totalExpenses = 0;
-    expensesSnapshot.docs.forEach(doc => {
-      totalExpenses += (doc.data().amount as number) || 0;
-    });
-
-    return totalProfit - totalExpenses;
+    return totalProfit;
   }
 
   private async getTotalBalancedOut(): Promise<number> {
