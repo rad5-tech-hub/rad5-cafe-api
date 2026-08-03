@@ -9,6 +9,31 @@ import { fcmWebPushService } from './fcm-web-push.js';
 
 const USERS_COLLECTION = 'users';
 
+/**
+ * Extra delivery hints layered onto a push message so it behaves like a
+ * native, high-urgency alert instead of a default best-effort notification:
+ * a dedicated Android channel (importance/bypass-DND/sound configured
+ * client-side), high OS priority, an iOS interruption level that breaks
+ * through Focus modes, and an optional category id to attach action buttons
+ * registered on the client (e.g. "View order").
+ */
+export type PushDeliveryOptions = {
+  channelId?: string;
+  priority?: 'default' | 'normal' | 'high';
+  categoryId?: string;
+  interruptionLevel?: 'active' | 'critical' | 'passive' | 'time-sensitive';
+  sound?: string | null;
+};
+
+/** Delivery profile for time-critical admin alerts (new order placed) — see NotificationContext/notifications.ts on the mobile client for the matching channel + category registration. */
+export const ADMIN_CRITICAL_PUSH: PushDeliveryOptions = {
+  channelId: 'admin-critical',
+  priority: 'high',
+  categoryId: 'admin_new_order',
+  interruptionLevel: 'time-sensitive',
+  sound: 'default',
+};
+
 class ExpoPushService {
   private expo: Expo;
 
@@ -34,11 +59,12 @@ class ExpoPushService {
     title: string,
     body: string,
     data?: Record<string, unknown>,
+    options?: PushDeliveryOptions,
   ): Promise<void> {
     // Expo push (mobile)
     const token = await this.getUserPushToken(userId);
     if (token && Expo.isExpoPushToken(token)) {
-      await this.sendToToken(token, title, body, data);
+      await this.sendToToken(token, title, body, data, options);
     }
 
     // FCM web push (browser)
@@ -51,6 +77,7 @@ class ExpoPushService {
     body: string,
     data?: Record<string, unknown>,
     excludeUserId?: string,
+    options?: PushDeliveryOptions,
   ): Promise<void> {
     try {
       const snapshot = await db.collection(USERS_COLLECTION)
@@ -64,10 +91,14 @@ class ExpoPushService {
         if (userData.expoPushToken && Expo.isExpoPushToken(userData.expoPushToken)) {
           messages.push({
             to: userData.expoPushToken,
-            sound: 'default',
+            sound: options?.sound ?? 'default',
             title,
             body,
             data: data ?? {},
+            ...(options?.channelId ? { channelId: options.channelId } : {}),
+            ...(options?.priority ? { priority: options.priority } : {}),
+            ...(options?.categoryId ? { categoryId: options.categoryId } : {}),
+            ...(options?.interruptionLevel ? { interruptionLevel: options.interruptionLevel } : {}),
           });
         }
       });
@@ -88,15 +119,20 @@ class ExpoPushService {
     title: string,
     body: string,
     data?: Record<string, unknown>,
+    options?: PushDeliveryOptions,
   ): Promise<void> {
     if (!Expo.isExpoPushToken(pushToken)) return;
 
     const message: ExpoPushMessage = {
       to: pushToken,
-      sound: 'default',
+      sound: options?.sound ?? 'default',
       title,
       body,
       data: data ?? {},
+      ...(options?.channelId ? { channelId: options.channelId } : {}),
+      ...(options?.priority ? { priority: options.priority } : {}),
+      ...(options?.categoryId ? { categoryId: options.categoryId } : {}),
+      ...(options?.interruptionLevel ? { interruptionLevel: options.interruptionLevel } : {}),
     };
 
     this.sendBatchAndForget([message], pushToken);

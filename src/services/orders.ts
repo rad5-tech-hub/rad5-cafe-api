@@ -4,7 +4,7 @@ import { generateReceiptNumber, getNextId } from '../utils/id-generator.js';
 import { productService } from './products.js';
 import { walletService } from './wallet.js';
 import { verifyPin } from '../utils/pin-hash.js';
-import { expoPushService } from './expo-push.js';
+import { expoPushService, ADMIN_CRITICAL_PUSH } from './expo-push.js';
 import { notificationService } from './notifications.js';
 
 const WALLETS_COLLECTION = 'wallets';
@@ -322,11 +322,23 @@ export class OrderService {
       const itemsStr = orderItems.map(i => `${i.quantity}x ${i.productName}`).join(', ');
       const adminBody = `New order from ${user.fullName || 'Customer'}: ${itemsStr} (₦${subtotal.toLocaleString()})`;
       adminSnapshot.forEach(adminDoc => {
+        // Delivered as a time-critical alert (dedicated Android channel that
+        // bypasses Do Not Disturb, iOS time-sensitive interruption level, high
+        // OS priority) so admins reliably see new orders come in — see
+        // ADMIN_CRITICAL_PUSH in expo-push.ts and the matching client-side
+        // channel/category registration in rd-cafe's notifications.ts.
         void expoPushService.sendToUser(
           adminDoc.id,
           'New Order Placed',
           adminBody,
-          { type: 'new_order', receiptNumber, amount: subtotal, orderId: orderRef.id },
+          {
+            type: 'new_order',
+            receiptNumber,
+            amount: subtotal,
+            orderId: orderRef.id,
+            url: `/(admin-tabs)/sales/${orderRef.id}`,
+          },
+          ADMIN_CRITICAL_PUSH,
         );
       });
     }).catch(console.error);

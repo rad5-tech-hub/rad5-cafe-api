@@ -5,7 +5,8 @@ import jwt from 'jsonwebtoken';
 import os from 'os';
 import path from 'path';
 import { env } from '../config/env.js';
-import { db, FieldValue, Timestamp } from '../config/firebase.js';
+import { db, FieldValue, Timestamp, auth } from '../config/firebase.js';
+import { promoteToAdmin } from '../utils/firebase-custom-claims.js';
 import { authenticateAdmin } from '../middleware/adminAuth.js';
 import { adminReportsService } from '../services/adminReports.js';
 import { analyticsService } from '../services/analytics.js';
@@ -1242,6 +1243,118 @@ router.get('/products/purchase-history', authenticateAdmin, async (req: Request,
     });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Response) => {
+  try {
+    const { email, fullName, password } = req.body;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      res.status(400).json({ success: false, message: 'A valid email address is required.' });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = typeof fullName === 'string' && fullName.trim() ? fullName.trim() : cleanEmail.split('@')[0];
+
+    // Check if user already exists in Firebase Auth
+    let existingAuthUser = null;
+    try {
+      existingAuthUser = await auth.getUserByEmail(cleanEmail);
+    } catch {
+      existingAuthUser = null;
+    }
+
+    if (existingAuthUser) {
+      const uid = existingAuthUser.uid;
+      const userRef = db.collection('users').doc(uid);
+      const userDoc = await userRef.get();
+
+      if (userDoc.exists) {
+        const userData = userDoc.data() as User;
+        if (userData.role === 'admin') {
+          res.status(400).json({ success: false, message: `User ${cleanEmail} is already an admin.` });
+          return;
+        }
+        await userRef.update({
+          role: 'admin',
+          fullName: cleanName || userData.fullName || cleanEmail.split('@')[0],
+          updatedAt: Timestamp.now(),
+        });
+      } else {
+        await userRef.set({
+          uid,
+          firebaseUid: uid,
+          email: cleanEmail,
+          fullName: cleanName,
+          role: 'admin',
+          isActive: true,
+          pinSetup: false,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+      }
+
+      await promoteToAdmin(uid);
+      logAudit(req.user!.userId, 'add_admin_existing', 'users', uid, { email: cleanEmail, role: 'admin' }, req);
+
+      res.json({
+        success: true,
+        message: `Existing user ${cleanEmail} promoted to Admin successfully.`,
+        isExisting: true,
+        data: { uid, email: cleanEmail, fullName: cleanName, role: 'admin' },
+      });
+      return;
+    }
+
+    // User does NOT exist in Firebase Auth -> Create new admin user
+    const tempPassword = typeof password === 'string' && password.trim().length >= 6
+      ? password.trim()
+      : `Admin@${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const newAuthUser = await auth.createUser({
+      email: cleanEmail,
+      password: tempPassword,
+      displayName: cleanName,
+      emailVerified: true,
+    });
+
+    const newUid = newAuthUser.uid;
+
+    await db.collection('users').doc(newUid).set({
+      uid: newUid,
+      firebaseUid: newUid,
+      email: cleanEmail,
+      fullName: cleanName,
+      role: 'admin',
+      isActive: true,
+      pinSetup: false,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+
+    // Create default wallet
+    const walletId = `W-${Date.now().toString(36).toUpperCase()}`;
+    await db.collection('wallets').doc(newUid).set({
+      userId: newUid,
+      walletId,
+      balance: 0,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+
+    await promoteToAdmin(newUid);
+    logAudit(req.user!.userId, 'create_new_admin', 'users', newUid, { email: cleanEmail, role: 'admin' }, req);
+
+    res.json({
+      success: true,
+      message: `New admin account created successfully for ${cleanEmail}.`,
+      isExisting: false,
+      temporaryPassword: tempPassword,
+      data: { uid: newUid, email: cleanEmail, fullName: cleanName, role: 'admin', temporaryPassword: tempPassword },
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message || 'Failed to create admin account.' });
   }
 });
 
