@@ -303,6 +303,16 @@ export class OrderService {
       });
     }
 
+    void notificationService.logAudit({
+      userId,
+      actorName: user.fullName || '',
+      actorRole: paymentMethod === 'cash' ? 'admin' : 'customer',
+      action: 'order_placed',
+      resource: 'orders',
+      resourceId: orderRef.id,
+      details: { receiptNumber, total: subtotal, paymentMethod, source, itemCount: orderItems.length, customerName: customerName || undefined },
+    });
+
     void expoPushService.sendToUser(
       userId,
       'Purchase Completed',

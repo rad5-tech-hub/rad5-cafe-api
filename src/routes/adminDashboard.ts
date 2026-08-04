@@ -36,11 +36,14 @@ async function verifyAdminPin(userId: string, pin: string): Promise<void> {
 function logAudit(userId: string, action: string, resource: string, resourceId: string, details: Record<string, unknown>, req: Request): void {
   void notificationService.logAudit({
     userId,
+    actorName: req.user?.fullName || req.user?.email || '',
+    actorRole: req.user?.role,
     action,
     resource,
     resourceId,
     details,
     ip: req.ip || '',
+    userAgent: String(req.headers['user-agent'] || ''),
   });
 }
 
@@ -113,6 +116,18 @@ router.post('/auth/login', async (req: Request, res: Response) => {
       env.jwt.secret,
       { expiresIn: env.jwt.expiresIn as any }
     );
+
+    void notificationService.logAudit({
+      userId: userDoc.id,
+      actorName: user.fullName || user.email,
+      actorRole: 'admin',
+      action: 'admin_login',
+      resource: 'auth',
+      resourceId: userDoc.id,
+      details: { email: user.email },
+      ip: req.ip || '',
+      userAgent: String(req.headers['user-agent'] || ''),
+    });
 
     res.json({
       success: true,

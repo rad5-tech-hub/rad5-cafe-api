@@ -26,11 +26,14 @@ function num(val: unknown, defaultVal: number = 1): number {
 function logAudit(userId: string, action: string, resource: string, resourceId: string, details: Record<string, unknown>, req: Request): void {
   void notificationService.logAudit({
     userId,
+    actorName: req.user?.fullName || req.user?.email || '',
+    actorRole: req.user?.role,
     action,
     resource,
     resourceId,
     details,
     ip: req.ip || '',
+    userAgent: String(req.headers['user-agent'] || ''),
   });
 }
 

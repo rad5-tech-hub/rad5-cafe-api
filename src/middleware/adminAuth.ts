@@ -11,6 +11,7 @@ declare global {
         userId: string;
         uid: string;
         email: string;
+        fullName?: string;
         role: 'customer' | 'admin';
         walletId?: string;
       };
@@ -57,6 +58,7 @@ export async function authenticateAdmin(
         userId: userDoc.id,
         uid: user.uid,
         email: user.email,
+        fullName: user.fullName,
         role: user.role,
         walletId: user.walletId,
       };
@@ -88,6 +90,7 @@ export async function authenticateAdmin(
           userId: userDoc.id,
           uid: user.uid,
           email: user.email,
+          fullName: user.fullName,
           role: 'admin',
           walletId: user.walletId,
         };
@@ -116,6 +119,7 @@ export async function authenticateAdmin(
         userId: userDoc.id,
         uid: user.uid,
         email: user.email,
+        fullName: user.fullName,
         role: user.role,
         walletId: user.walletId,
       };

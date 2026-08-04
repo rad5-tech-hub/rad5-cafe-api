@@ -78,26 +78,43 @@ export class NotificationService {
 
   async logAudit(data: {
     userId: string;
+    actorName?: string;
+    actorRole?: 'customer' | 'admin';
     action: string;
     resource: string;
     resourceId: string;
     details: Record<string, unknown>;
     ip?: string;
+    userAgent?: string;
   }): Promise<void> {
     await db.collection(AUDIT_LOGS_COLLECTION).add({
       userId: data.userId,
+      actorName: data.actorName || '',
+      actorRole: data.actorRole || '',
       action: data.action,
       resource: data.resource,
       resourceId: data.resourceId,
       details: data.details,
       ip: data.ip || '',
+      userAgent: data.userAgent || '',
       createdAt: Timestamp.now(),
     } as unknown as Partial<AuditLog>);
   }
 
-  async getAuditLogs(page: number = 1, limit: number = 50): Promise<{ logs: AuditLog[]; total: number }> {
-    const query = db.collection(AUDIT_LOGS_COLLECTION)
-      .orderBy('createdAt', 'desc');
+  async getAuditLogs(
+    page: number = 1,
+    limit: number = 50,
+    filters: { action?: string; resource?: string; userId?: string; startDate?: Date; endDate?: Date } = {}
+  ): Promise<{ logs: AuditLog[]; total: number }> {
+    let query: FirebaseFirestore.Query = db.collection(AUDIT_LOGS_COLLECTION);
+
+    if (filters.action) query = query.where('action', '==', filters.action);
+    if (filters.resource) query = query.where('resource', '==', filters.resource);
+    if (filters.userId) query = query.where('userId', '==', filters.userId);
+    if (filters.startDate) query = query.where('createdAt', '>=', Timestamp.fromDate(filters.startDate));
+    if (filters.endDate) query = query.where('createdAt', '<=', Timestamp.fromDate(filters.endDate));
+
+    query = query.orderBy('createdAt', 'desc');
 
     const countSnapshot = await query.count().get();
     const total = countSnapshot.data().count;

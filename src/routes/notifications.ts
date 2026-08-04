@@ -48,7 +48,14 @@ router.get('/audit-logs', authenticate, requireAdmin, async (req: Request, res: 
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);
-    const result = await notificationService.getAuditLogs(page, limit);
+    const filters = {
+      action: str(req.query.action) || undefined,
+      resource: str(req.query.resource) || undefined,
+      userId: str(req.query.userId) || undefined,
+      startDate: str(req.query.startDate) ? new Date(str(req.query.startDate)) : undefined,
+      endDate: str(req.query.endDate) ? new Date(str(req.query.endDate)) : undefined,
+    };
+    const result = await notificationService.getAuditLogs(page, limit, filters);
     res.json({ success: true, logs: result.logs, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });

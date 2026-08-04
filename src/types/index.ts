@@ -156,11 +156,14 @@ export interface StockHistory {
 export interface AuditLog {
   id: string;
   userId: string;
+  actorName?: string;
+  actorRole?: 'customer' | 'admin';
   action: string;
   resource: string;
   resourceId: string;
   details: Record<string, unknown>;
   ip?: string;
+  userAgent?: string;
   createdAt: admin.firestore.Timestamp;
 }
 

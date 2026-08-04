@@ -13,6 +13,7 @@ declare global {
         userId: string;
         uid: string;
         email: string;
+        fullName?: string;
         role: "customer" | "admin";
         walletId?: string;
       };
@@ -117,6 +118,7 @@ export async function authenticate(
         userId: userDoc.id,
         uid: user.uid,
         email: user.email,
+        fullName: user.fullName,
         role: user.role,
         walletId: user.walletId,
       };
@@ -142,6 +144,7 @@ export async function authenticate(
         userId: created.docId,
         uid: created.uid,
         email,
+        fullName: "",
         role: roleFromClaims,
         walletId: created.walletId,
       };
@@ -167,6 +170,7 @@ export async function authenticate(
       userId: userDoc.id,
       uid: user.uid,
       email: user.email,
+      fullName: user.fullName,
       role: roleFromClaims,
       walletId: user.walletId,
     };
