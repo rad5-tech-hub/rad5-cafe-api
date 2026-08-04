@@ -157,10 +157,10 @@ export class OrderService {
       if (String(paymentMethod).toLowerCase() !== 'cash') {
         if (isFirstPurchase && txUser.referredBy && txReferrerUser && referrerWalletRef) {
           if (txUser.referralMethod === 'manual') {
-            referrerReward = totalProfit * 0.025;
-            buyerReward = totalProfit * 0.025;
+            referrerReward = Math.round((totalProfit * 0.025 + Number.EPSILON) * 100) / 100;
+            buyerReward = Math.round((totalProfit * 0.025 + Number.EPSILON) * 100) / 100;
           } else {
-            referrerReward = totalProfit * 0.05;
+            referrerReward = Math.round((totalProfit * 0.05 + Number.EPSILON) * 100) / 100;
           }
           
           if (referrerReward > 0 && txReferrerWalletDoc && txReferrerWalletDoc.exists) {
@@ -191,7 +191,8 @@ export class OrderService {
             });
           }
         } else if (!isFirstPurchase || !txUser.referredBy) {
-          buyerReward = source === 'mobile' ? totalProfit * 0.05 : totalProfit * 0.03;
+          const rate = source === 'mobile' ? 0.05 : 0.03;
+          buyerReward = Math.round((totalProfit * rate + Number.EPSILON) * 100) / 100;
         }
       }
       

@@ -736,7 +736,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
         }
 
         // 2. Refund wallet balance (minus buyer cashback reward)
-        const netRefund = order.total - rewardAmount;
+        const netRefund = Math.round((order.total - rewardAmount + Number.EPSILON) * 100) / 100;
         transaction.update(walletDoc.ref, {
           balance: FieldValue.increment(netRefund),
           totalSpent: FieldValue.increment(-order.total),
@@ -775,8 +775,9 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
 
         // 5. Revert Referrer reward if any
         if (referrerWalletDoc && referrerAmount > 0) {
+          const referrerReversal = Math.round((referrerAmount + Number.EPSILON) * 100) / 100;
           transaction.update(referrerWalletDoc.ref, {
-            balance: FieldValue.increment(-referrerAmount),
+            balance: FieldValue.increment(-referrerReversal),
             updatedAt: Timestamp.now(),
           });
           transaction.set(db.collection('transactions').doc(), {
@@ -1046,7 +1047,7 @@ router.post('/wallet/adjust', authenticateAdmin, async (req: Request, res: Respo
     const walletDoc = walletSnapshot.docs[0]!;
     const wallet = walletDoc.data();
 
-    const amt = Number(amount);
+    const amt = Math.round((Number(amount) + Number.EPSILON) * 100) / 100;
 
     const txnRef = db.collection('transactions').doc();
 

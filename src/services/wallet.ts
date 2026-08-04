@@ -28,6 +28,7 @@ export class WalletService {
   async fundWallet(userId: string, amount: number, paymentMethod: 'paystack' | 'flutterwave', reference?: string): Promise<Transaction> {
     const wallet = await this.getWallet(userId);
     const txnRef = reference || generateReference('FND');
+    amount = Math.round((amount + Number.EPSILON) * 100) / 100;
 
     const txnData = {
       walletId: wallet.walletId,
@@ -61,6 +62,7 @@ export class WalletService {
   async createPaymentIntent(userId: string, amount: number, provider: 'paystack' | 'flutterwave'): Promise<{ authorizationUrl: string; reference: string }> {
     const reference = generateReference('PAY');
     const wallet = await this.getWallet(userId);
+    amount = Math.round((amount + Number.EPSILON) * 100) / 100;
 
     await db.collection(TRANSACTIONS_COLLECTION).add({
       walletId: wallet.walletId,
@@ -86,7 +88,7 @@ export class WalletService {
         },
         body: JSON.stringify({
           email: '',
-          amount: amount * 100,
+          amount: Math.round(amount * 100),
           reference,
           callback_url: `${env.app.corsOrigin}/wallet/funding/callback`,
         }),
@@ -162,9 +164,10 @@ export class WalletService {
 
     const wallet = await this.getWalletByWalletId(txn.walletId);
     const walletRef = db.collection(WALLETS_COLLECTION).doc(wallet.id);
+    const fundedAmount = Math.round((txn.amount + Number.EPSILON) * 100) / 100;
     await walletRef.update({
-      balance: FieldValue.increment(txn.amount),
-      totalFunded: FieldValue.increment(txn.amount),
+      balance: FieldValue.increment(fundedAmount),
+      totalFunded: FieldValue.increment(fundedAmount),
       updatedAt: Timestamp.now(),
     });
 
