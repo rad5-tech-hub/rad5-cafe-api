@@ -48,12 +48,15 @@ router.get('/audit-logs', authenticate, requireAdmin, async (req: Request, res: 
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);
+    // startDate/endDate arrive as plain "YYYY-MM-DD" dates from a date
+    // picker — anchor them to the start/end of that day so the end date is
+    // inclusive of the whole day, not just its midnight instant.
     const filters = {
       action: str(req.query.action) || undefined,
       resource: str(req.query.resource) || undefined,
       userId: str(req.query.userId) || undefined,
-      startDate: str(req.query.startDate) ? new Date(str(req.query.startDate)) : undefined,
-      endDate: str(req.query.endDate) ? new Date(str(req.query.endDate)) : undefined,
+      startDate: str(req.query.startDate) ? new Date(`${str(req.query.startDate)}T00:00:00.000Z`) : undefined,
+      endDate: str(req.query.endDate) ? new Date(`${str(req.query.endDate)}T23:59:59.999Z`) : undefined,
     };
     const result = await notificationService.getAuditLogs(page, limit, filters);
     res.json({ success: true, logs: result.logs, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
