@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { categoryService } from '../services/categories.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { requirePermission } from '../middleware/permissions.js';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { name, description } = req.body;
     if (!name) {
@@ -37,7 +38,7 @@ router.post('/', authenticate, requireAdmin, async (req: Request, res: Response)
   }
 });
 
-router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.put('/:id', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { name, description, isActive } = req.body;
     await categoryService.update(req.params.id as string, { name, description, isActive });
@@ -47,7 +48,7 @@ router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Respons
   }
 });
 
-router.delete('/:id', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.delete('/:id', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     await categoryService.delete(req.params.id as string);
     res.json({ success: true, message: 'Category deleted' });

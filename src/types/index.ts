@@ -8,6 +8,12 @@ export interface User {
   phoneNumber: string;
   email: string;
   role: 'customer' | 'admin';
+  /**
+   * Assignable sub-admin permission keys (see config/permissions.ts).
+   * undefined/null = full-access admin (the grandfathered "highest" tier).
+   * A defined array (even empty) means the admin is restricted to those keys.
+   */
+  permissions?: string[] | null;
   walletId: string;
   pin: string | null;
   pinSetup: boolean;

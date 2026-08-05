@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { notificationService } from '../services/notifications.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { requirePermission } from '../middleware/permissions.js';
 import { expoPushService } from '../services/expo-push.js';
 import { db } from '../config/firebase.js';
 
@@ -16,7 +17,7 @@ function num(val: unknown, defaultVal: number = 1): number {
   return isNaN(n) ? defaultVal : n;
 }
 
-router.get('/alerts', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/alerts', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const acknowledged = str(req.query.acknowledged) === 'true';
     const alerts = await notificationService.getAlerts(acknowledged);
@@ -26,7 +27,7 @@ router.get('/alerts', authenticate, requireAdmin, async (req: Request, res: Resp
   }
 });
 
-router.post('/alerts/check', authenticate, requireAdmin, async (_req: Request, res: Response) => {
+router.post('/alerts/check', authenticate, requireAdmin, requirePermission('inventory'), async (_req: Request, res: Response) => {
   try {
     const alerts = await notificationService.checkInventoryAlerts();
     res.json({ success: true, data: alerts, message: `${alerts.length} alert(s) generated` });
@@ -35,7 +36,7 @@ router.post('/alerts/check', authenticate, requireAdmin, async (_req: Request, r
   }
 });
 
-router.put('/alerts/:id/acknowledge', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.put('/alerts/:id/acknowledge', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     await notificationService.acknowledgeAlert(req.params.id as string);
     res.json({ success: true, message: 'Alert acknowledged' });
@@ -44,7 +45,7 @@ router.put('/alerts/:id/acknowledge', authenticate, requireAdmin, async (req: Re
   }
 });
 
-router.get('/audit-logs', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/audit-logs', authenticate, requireAdmin, requirePermission('audit_logs'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);

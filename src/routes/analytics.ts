@@ -2,10 +2,11 @@ import { Router, Request, Response } from 'express';
 import { analyticsService } from '../services/analytics.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { requirePermission } from '../middleware/permissions.js';
 
 const router = Router();
 
-router.get('/dashboard', authenticate, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/dashboard', authenticate, requireAdmin, requirePermission('analytics'), async (_req: Request, res: Response) => {
   try {
     const stats = await analyticsService.getDashboardStats();
     res.json({ success: true, data: stats });
@@ -14,7 +15,7 @@ router.get('/dashboard', authenticate, requireAdmin, async (_req: Request, res: 
   }
 });
 
-router.get('/revenue', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/revenue', authenticate, requireAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const period = (req.query.period as 'daily' | 'weekly' | 'monthly') || 'daily';
     const limit = parseInt(req.query.limit as string) || 30;
@@ -25,7 +26,7 @@ router.get('/revenue', authenticate, requireAdmin, async (req: Request, res: Res
   }
 });
 
-router.get('/top-products', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/top-products', authenticate, requireAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const data = await analyticsService.getTopProducts(limit);
@@ -35,7 +36,7 @@ router.get('/top-products', authenticate, requireAdmin, async (req: Request, res
   }
 });
 
-router.get('/customers', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/customers', authenticate, requireAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const data = await analyticsService.getCustomerInsights(limit);
@@ -45,7 +46,7 @@ router.get('/customers', authenticate, requireAdmin, async (req: Request, res: R
   }
 });
 
-router.get('/profit', authenticate, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/profit', authenticate, requireAdmin, requirePermission('analytics'), async (_req: Request, res: Response) => {
   try {
     const data = await analyticsService.getProfitAnalytics();
     res.json({ success: true, data });

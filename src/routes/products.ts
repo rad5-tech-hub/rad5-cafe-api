@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { productService } from '../services/products.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { requirePermission } from '../middleware/permissions.js';
 import { orderService } from '../services/orders.js';
 
 const router = Router();
@@ -59,7 +60,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/', authenticate, requireAdmin, requirePermission('products'), async (req: Request, res: Response) => {
   try {
     const { name, categoryId, description, imageUrl, costPrice, sellingPrice, quantity } = req.body;
     if (!name || !categoryId || costPrice === undefined || sellingPrice === undefined || quantity === undefined) {
@@ -99,7 +100,7 @@ router.post('/check-stock', authenticate, async (req: Request, res: Response) =>
   }
 });
 
-router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.put('/:id', authenticate, requireAdmin, requirePermission('products', 'inventory'), async (req: Request, res: Response) => {
   try {
     const { name, categoryId, description, imageUrl, costPrice, sellingPrice, lowStockThreshold, isActive } = req.body;
     
@@ -122,7 +123,7 @@ router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Respons
   }
 });
 
-router.post('/:id/restock', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/:id/restock', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { quantity, newCostPrice } = req.body;
     if (!quantity || quantity <= 0) {
@@ -136,7 +137,7 @@ router.post('/:id/restock', authenticate, requireAdmin, async (req: Request, res
   }
 });
 
-router.post('/:id/remove-stock', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/:id/remove-stock', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { quantity, reason } = req.body;
     if (!quantity || quantity <= 0) {
@@ -150,7 +151,7 @@ router.post('/:id/remove-stock', authenticate, requireAdmin, async (req: Request
   }
 });
 
-router.get('/:id/stock-history', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/:id/stock-history', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const history = await productService.getStockHistory(req.params.id as string);
     res.json({ success: true, data: history });
@@ -159,7 +160,7 @@ router.get('/:id/stock-history', authenticate, requireAdmin, async (req: Request
   }
 });
 
-router.get('/:id/history', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/:id/history', authenticate, requireAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const period = (req.query.period as 'day' | 'month' | 'year') || undefined;
     const startDate = str(req.query.startDate) || undefined;
@@ -171,7 +172,7 @@ router.get('/:id/history', authenticate, requireAdmin, async (req: Request, res:
   }
 });
 
-router.get('/alerts/low-stock', authenticate, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/alerts/low-stock', authenticate, requireAdmin, requirePermission('inventory'), async (_req: Request, res: Response) => {
   try {
     const products = await productService.getLowStockProducts();
     res.json({ success: true, data: products });

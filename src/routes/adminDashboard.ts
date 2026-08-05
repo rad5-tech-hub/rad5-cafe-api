@@ -8,6 +8,8 @@ import { env } from '../config/env.js';
 import { db, FieldValue, Timestamp, auth } from '../config/firebase.js';
 import { promoteToAdmin } from '../utils/firebase-custom-claims.js';
 import { authenticateAdmin } from '../middleware/adminAuth.js';
+import { requirePermission, requireFullAccessAdmin } from '../middleware/permissions.js';
+import { sanitizePermissions } from '../config/permissions.js';
 import { adminReportsService } from '../services/adminReports.js';
 import { analyticsService } from '../services/analytics.js';
 import { categoryService } from '../services/categories.js';
@@ -234,7 +236,7 @@ router.get('/overview', authenticateAdmin, async (req: Request, res: Response) =
 /**
  * Rewards History
  */
-router.get('/rewards', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/rewards', authenticateAdmin, requirePermission('rewards'), async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
@@ -250,7 +252,7 @@ router.get('/rewards', authenticateAdmin, async (req: Request, res: Response) =>
 /**
  * Add Product
  */
-router.post('/products', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/products', authenticateAdmin, requirePermission('products'), async (req: Request, res: Response) => {
   try {
     const { name, categoryId, description, imageUrl, costPrice, sellingPrice, quantity, lowStockThreshold, pin } = req.body;
     
@@ -286,7 +288,7 @@ router.post('/products', authenticateAdmin, async (req: Request, res: Response) 
 /**
  * Restock Inventory
  */
-router.post('/products/:id/restock', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/products/:id/restock', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { quantity, newCostPrice, pin } = req.body;
     const productId = req.params.id as string;
@@ -318,7 +320,7 @@ router.post('/products/:id/restock', authenticateAdmin, async (req: Request, res
 /**
  * Remove Stock (Misentry Correction)
  */
-router.post('/products/:id/remove-stock', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/products/:id/remove-stock', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { quantity, reason, pin } = req.body;
     const productId = req.params.id as string;
@@ -343,7 +345,7 @@ router.post('/products/:id/remove-stock', authenticateAdmin, async (req: Request
 /**
  * Inventory Tracking List
  */
-router.get('/inventory-tracking', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/inventory-tracking', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 50);
@@ -390,7 +392,7 @@ router.get('/inventory-tracking', authenticateAdmin, async (req: Request, res: R
 /**
  * Product Analytics (sales, revenue, profit for a single product)
  */
-router.get('/products/:id/analytics', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/products/:id/analytics', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const productId = req.params.id as string;
     const rawPeriod = (req.query.period as string) || 'this_month';
@@ -421,7 +423,7 @@ router.get('/products/:id/analytics', authenticateAdmin, async (req: Request, re
 /**
  * Create Category
  */
-router.post('/categories', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/categories', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { name, description } = req.body;
     if (!name) {
@@ -439,7 +441,7 @@ router.post('/categories', authenticateAdmin, async (req: Request, res: Response
 /**
  * Edit Category
  */
-router.put('/categories/:id', authenticateAdmin, async (req: Request, res: Response) => {
+router.put('/categories/:id', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const { name, description, isActive } = req.body;
     const categoryId = req.params.id as string;
@@ -455,7 +457,7 @@ router.put('/categories/:id', authenticateAdmin, async (req: Request, res: Respo
 /**
  * Delete Category
  */
-router.delete('/categories/:id', authenticateAdmin, async (req: Request, res: Response) => {
+router.delete('/categories/:id', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const categoryId = req.params.id as string;
     await categoryService.delete(categoryId);
@@ -471,7 +473,7 @@ router.delete('/categories/:id', authenticateAdmin, async (req: Request, res: Re
 /**
  * Get All Sales (with Revenue, Profit, Customer Name, and Filters)
  */
-router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/sales', authenticateAdmin, requirePermission('sales'), async (req: Request, res: Response) => {
   try {
     const filter = (req.query.filter as string || 'all').toLowerCase();
     const page = num(req.query.page, 1);
@@ -583,7 +585,7 @@ router.get('/sales', authenticateAdmin, async (req: Request, res: Response) => {
 /**
  * Get Single Sale Details (Admin)
  */
-router.get('/sales/:id', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/sales/:id', authenticateAdmin, requirePermission('sales'), async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id as string;
     const orderRef = db.collection('orders').doc(orderId);
@@ -637,7 +639,7 @@ router.get('/sales/:id', authenticateAdmin, async (req: Request, res: Response) 
 /**
  * Adjust Sale Status (Cancel and Refund Wallet / Revert Stock)
  */
-router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Response) => {
+router.put('/sales/:id/adjust', authenticateAdmin, requirePermission('sales'), async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id as string;
     const { status, pin } = req.body;
@@ -833,7 +835,7 @@ router.put('/sales/:id/adjust', authenticateAdmin, async (req: Request, res: Res
 /**
  * Get Unissued Orders (paid but not yet processed/issued by admin)
  */
-router.get('/sales/unissued', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/sales/unissued', authenticateAdmin, requirePermission('sales'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
@@ -847,7 +849,7 @@ router.get('/sales/unissued', authenticateAdmin, async (req: Request, res: Respo
 /**
  * Issue an Order (mark as processed by admin)
  */
-router.put('/sales/:id/issue', authenticateAdmin, async (req: Request, res: Response) => {
+router.put('/sales/:id/issue', authenticateAdmin, requirePermission('sales'), async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id as string;
     const order = await orderService.issueOrder(orderId, req.user!.userId);
@@ -868,7 +870,7 @@ router.put('/sales/:id/issue', authenticateAdmin, async (req: Request, res: Resp
 /**
  * Daily Analytics
  */
-router.get('/analytics/daily', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/daily', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 5;
     const data = await analyticsService.getDailyAnalytics(limit);
@@ -881,7 +883,7 @@ router.get('/analytics/daily', authenticateAdmin, async (req: Request, res: Resp
 /**
  * Weekly Analytics
  */
-router.get('/analytics/weekly', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/weekly', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 5;
     const data = await analyticsService.getWeeklyAnalytics(limit);
@@ -894,7 +896,7 @@ router.get('/analytics/weekly', authenticateAdmin, async (req: Request, res: Res
 /**
  * Monthly Analytics
  */
-router.get('/analytics/monthly', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/monthly', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 5;
     const data = await analyticsService.getMonthlyAnalytics(limit);
@@ -907,7 +909,7 @@ router.get('/analytics/monthly', authenticateAdmin, async (req: Request, res: Re
 /**
  * Deep Custom Analytics
  */
-router.get('/analytics/custom', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/custom', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     if (!req.query.startDate || !req.query.endDate) {
       res.status(400).json({ success: false, message: 'startDate and endDate are required' });
@@ -927,7 +929,7 @@ router.get('/analytics/custom', authenticateAdmin, async (req: Request, res: Res
 /**
  * Accounting Overview
  */
-router.get('/analytics/accounting', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/accounting', authenticateAdmin, requirePermission('accounting'), async (req: Request, res: Response) => {
   try {
     const data = await analyticsService.getAccountingOverview();
     res.json({ success: true, data });
@@ -939,7 +941,7 @@ router.get('/analytics/accounting', authenticateAdmin, async (req: Request, res:
 /**
  * Revenue Analytics Charts Data
  */
-router.get('/analytics/revenue', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/revenue', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const period = (req.query.period as 'daily' | 'weekly' | 'monthly') || 'daily';
     const limit = parseInt(req.query.limit as string) || 30;
@@ -953,7 +955,7 @@ router.get('/analytics/revenue', authenticateAdmin, async (req: Request, res: Re
 /**
  * Top Performing Products
  */
-router.get('/analytics/top-products', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/top-products', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const data = await analyticsService.getTopProducts(limit);
@@ -966,7 +968,7 @@ router.get('/analytics/top-products', authenticateAdmin, async (req: Request, re
 /**
  * Customer Insights
  */
-router.get('/analytics/customers', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/customers', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const data = await analyticsService.getCustomerInsights(limit);
@@ -979,7 +981,7 @@ router.get('/analytics/customers', authenticateAdmin, async (req: Request, res: 
 /**
  * Profit Analytics Margins
  */
-router.get('/analytics/profit', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/analytics/profit', authenticateAdmin, requirePermission('analytics'), async (req: Request, res: Response) => {
   try {
     const data = await analyticsService.getProfitAnalytics();
     res.json({ success: true, data });
@@ -993,7 +995,7 @@ router.get('/analytics/profit', authenticateAdmin, async (req: Request, res: Res
 /**
  * Get All Unacknowledged Stock Alerts
  */
-router.get('/alerts', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/alerts', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     // Regenerate alerts in case stock updated
     await notificationService.checkInventoryAlerts();
@@ -1007,7 +1009,7 @@ router.get('/alerts', authenticateAdmin, async (req: Request, res: Response) => 
 /**
  * Acknowledge Inventory Alert
  */
-router.put('/alerts/:id/acknowledge', authenticateAdmin, async (req: Request, res: Response) => {
+router.put('/alerts/:id/acknowledge', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const alertId = req.params.id as string;
     await notificationService.acknowledgeAlert(alertId);
@@ -1022,7 +1024,7 @@ router.put('/alerts/:id/acknowledge', authenticateAdmin, async (req: Request, re
 /**
  * Adjust Customer Wallet Balance (Fund / Debit)
  */
-router.post('/wallet/adjust', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/wallet/adjust', authenticateAdmin, requirePermission('wallet_adjust'), async (req: Request, res: Response) => {
   try {
     const { userId, amount, description, pin } = req.body;
 
@@ -1104,7 +1106,7 @@ router.post('/wallet/adjust', authenticateAdmin, async (req: Request, res: Respo
 /**
  * Export Reports (PDF, Excel, CSV)
  */
-router.get('/reports/export', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/reports/export', authenticateAdmin, requirePermission('reports'), async (req: Request, res: Response) => {
   try {
     const type = str(req.query.type).toLowerCase(); // sales, inventory, profit, transactions
     const format = str(req.query.format).toLowerCase(); // pdf, excel, csv
@@ -1159,7 +1161,7 @@ router.get('/reports/export', authenticateAdmin, async (req: Request, res: Respo
 /**
  * Trace Product Purchase History (daily, weekly, monthly, even by user)
  */
-router.get('/products/purchase-history', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/products/purchase-history', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const productId = str(req.query.productId) || undefined;
     const userId = str(req.query.userId) || undefined;
@@ -1262,14 +1264,15 @@ router.get('/products/purchase-history', authenticateAdmin, async (req: Request,
   }
 });
 
-router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/users/add-admin', authenticateAdmin, requireFullAccessAdmin, async (req: Request, res: Response) => {
   try {
-    const { email, fullName, password } = req.body;
+    const { email, fullName, password, permissions } = req.body;
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       res.status(400).json({ success: false, message: 'A valid email address is required.' });
       return;
     }
 
+    const cleanPermissions = sanitizePermissions(permissions);
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = typeof fullName === 'string' && fullName.trim() ? fullName.trim() : cleanEmail.split('@')[0];
 
@@ -1294,6 +1297,7 @@ router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Res
         }
         await userRef.update({
           role: 'admin',
+          permissions: cleanPermissions,
           fullName: cleanName || userData.fullName || cleanEmail.split('@')[0],
           updatedAt: Timestamp.now(),
         });
@@ -1304,6 +1308,7 @@ router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Res
           email: cleanEmail,
           fullName: cleanName,
           role: 'admin',
+          permissions: cleanPermissions,
           isActive: true,
           pinSetup: false,
           createdAt: Timestamp.now(),
@@ -1312,13 +1317,13 @@ router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Res
       }
 
       await promoteToAdmin(uid);
-      logAudit(req.user!.userId, 'add_admin_existing', 'users', uid, { email: cleanEmail, role: 'admin' }, req);
+      logAudit(req.user!.userId, 'add_admin_existing', 'users', uid, { email: cleanEmail, role: 'admin', permissions: cleanPermissions }, req);
 
       res.json({
         success: true,
         message: `Existing user ${cleanEmail} promoted to Admin successfully.`,
         isExisting: true,
-        data: { uid, email: cleanEmail, fullName: cleanName, role: 'admin' },
+        data: { uid, email: cleanEmail, fullName: cleanName, role: 'admin', permissions: cleanPermissions },
       });
       return;
     }
@@ -1343,6 +1348,7 @@ router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Res
       email: cleanEmail,
       fullName: cleanName,
       role: 'admin',
+      permissions: cleanPermissions,
       isActive: true,
       pinSetup: false,
       createdAt: Timestamp.now(),
@@ -1360,14 +1366,14 @@ router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Res
     });
 
     await promoteToAdmin(newUid);
-    logAudit(req.user!.userId, 'create_new_admin', 'users', newUid, { email: cleanEmail, role: 'admin' }, req);
+    logAudit(req.user!.userId, 'create_new_admin', 'users', newUid, { email: cleanEmail, role: 'admin', permissions: cleanPermissions }, req);
 
     res.json({
       success: true,
       message: `New admin account created successfully for ${cleanEmail}.`,
       isExisting: false,
       temporaryPassword: tempPassword,
-      data: { uid: newUid, email: cleanEmail, fullName: cleanName, role: 'admin', temporaryPassword: tempPassword },
+      data: { uid: newUid, email: cleanEmail, fullName: cleanName, role: 'admin', permissions: cleanPermissions, temporaryPassword: tempPassword },
     });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message || 'Failed to create admin account.' });
@@ -1377,7 +1383,7 @@ router.post('/users/add-admin', authenticateAdmin, async (req: Request, res: Res
 /**
  * Trace Customer User History (Orders, Transactions, Audit Logs combined timeline)
  */
-router.get('/users/:id/history', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/users/:id/history', authenticateAdmin, requirePermission('users'), async (req: Request, res: Response) => {
   try {
     const userId = req.params.id as string;
     const page = num(req.query.page, 1);
@@ -1522,7 +1528,7 @@ router.get('/users/:id/history', authenticateAdmin, async (req: Request, res: Re
 /**
  * Add a business expense
  */
-router.post('/sales-ledger/expenses', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/sales-ledger/expenses', authenticateAdmin, requirePermission('expenses'), async (req: Request, res: Response) => {
   try {
     const { amount, description, date, pin } = req.body;
     
@@ -1555,7 +1561,7 @@ router.post('/sales-ledger/expenses', authenticateAdmin, async (req: Request, re
 /**
  * Get business expenses
  */
-router.get('/sales-ledger/expenses', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/sales-ledger/expenses', authenticateAdmin, requirePermission('expenses'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
@@ -1596,7 +1602,7 @@ router.get('/sales-ledger/expenses', authenticateAdmin, async (req: Request, res
 /**
  * Get remaining stock summary (quantity & value) for balance-out
  */
-router.get('/stock-balance/summary', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/stock-balance/summary', authenticateAdmin, requirePermission('stock_balance'), async (req: Request, res: Response) => {
   try {
     const summary = await stockBalanceService.getSummary();
     res.json({ success: true, data: summary });
@@ -1608,7 +1614,7 @@ router.get('/stock-balance/summary', authenticateAdmin, async (req: Request, res
 /**
  * Balance out remaining stock value against profit (recorded as a loss)
  */
-router.post('/stock-balance', authenticateAdmin, async (req: Request, res: Response) => {
+router.post('/stock-balance', authenticateAdmin, requirePermission('stock_balance'), async (req: Request, res: Response) => {
   try {
     const { productId, quantity, note, pin } = req.body;
 
@@ -1637,7 +1643,7 @@ router.post('/stock-balance', authenticateAdmin, async (req: Request, res: Respo
 /**
  * Get stock balance-out history
  */
-router.get('/stock-balance', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/stock-balance', authenticateAdmin, requirePermission('stock_balance'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);

@@ -16,6 +16,7 @@ declare global {
         fullName?: string;
         role: "customer" | "admin";
         walletId?: string;
+        permissions?: string[] | null;
       };
     }
   }
@@ -121,6 +122,7 @@ export async function authenticate(
         fullName: user.fullName,
         role: user.role,
         walletId: user.walletId,
+        permissions: user.permissions,
       };
       next();
       return;
@@ -173,6 +175,7 @@ export async function authenticate(
       fullName: user.fullName,
       role: roleFromClaims,
       walletId: user.walletId,
+      permissions: user.permissions,
     };
     next();
   } catch (error: any) {

@@ -2,10 +2,11 @@ import { Router, Request, Response } from 'express';
 import { imageService } from '../services/images.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { requirePermission } from '../middleware/permissions.js';
 
 const router = Router();
 
-router.get('/search', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/search', authenticate, requireAdmin, requirePermission('products', 'inventory'), async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
     const count = parseInt(req.query.count as string) || 10;

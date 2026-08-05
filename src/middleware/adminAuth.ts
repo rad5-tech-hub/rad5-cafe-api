@@ -14,6 +14,7 @@ declare global {
         fullName?: string;
         role: 'customer' | 'admin';
         walletId?: string;
+        permissions?: string[] | null;
       };
     }
   }
@@ -61,6 +62,7 @@ export async function authenticateAdmin(
         fullName: user.fullName,
         role: user.role,
         walletId: user.walletId,
+        permissions: user.permissions,
       };
       return next();
     } catch (jwtError) {
@@ -93,6 +95,7 @@ export async function authenticateAdmin(
           fullName: user.fullName,
           role: 'admin',
           walletId: user.walletId,
+          permissions: user.permissions,
         };
         return next();
       }
@@ -122,6 +125,7 @@ export async function authenticateAdmin(
         fullName: user.fullName,
         role: user.role,
         walletId: user.walletId,
+        permissions: user.permissions,
       };
       return next();
     } catch (firebaseError) {

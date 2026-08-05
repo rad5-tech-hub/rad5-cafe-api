@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { reportService } from '../services/reports.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { requirePermission, requireFullAccessAdmin, hasFullAccess } from '../middleware/permissions.js';
+import { ADMIN_PERMISSIONS, sanitizePermissions } from '../config/permissions.js';
 import { db, auth, Timestamp } from '../config/firebase.js';
 import { Transaction, User } from '../types/index.js';
 import { promoteToAdmin, demoteFromAdmin } from '../utils/firebase-custom-claims.js';
@@ -49,7 +51,7 @@ async function verifyAdminPin(userId: string, pin: string): Promise<void> {
   if (!isMatch) throw new Error('Invalid transaction PIN');
 }
 
-router.get('/sales', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/sales', authenticate, requireAdmin, requirePermission('reports'), async (req: Request, res: Response) => {
   try {
     const startDate = req.query.start ? new Date(str(req.query.start)) : undefined;
     const endDate = req.query.end ? new Date(str(req.query.end)) : undefined;
@@ -62,7 +64,7 @@ router.get('/sales', authenticate, requireAdmin, async (req: Request, res: Respo
   }
 });
 
-router.get('/inventory', authenticate, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/inventory', authenticate, requireAdmin, requirePermission('reports'), async (_req: Request, res: Response) => {
   try {
     const buffer = await reportService.generateInventoryReport();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -73,7 +75,7 @@ router.get('/inventory', authenticate, requireAdmin, async (_req: Request, res: 
   }
 });
 
-router.get('/profit', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/profit', authenticate, requireAdmin, requirePermission('reports'), async (req: Request, res: Response) => {
   try {
     const startDate = req.query.start ? new Date(str(req.query.start)) : undefined;
     const endDate = req.query.end ? new Date(str(req.query.end)) : undefined;
@@ -86,7 +88,7 @@ router.get('/profit', authenticate, requireAdmin, async (req: Request, res: Resp
   }
 });
 
-router.get('/transactions', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/transactions', authenticate, requireAdmin, requirePermission('reports'), async (req: Request, res: Response) => {
   try {
     const userId = str(req.query.userId) || undefined;
     const buffer = await reportService.generateCustomerTransactionsReport(userId);
@@ -98,7 +100,7 @@ router.get('/transactions', authenticate, requireAdmin, async (req: Request, res
   }
 });
 
-router.get('/users', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/users', authenticate, requireAdmin, requirePermission('users'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
@@ -121,7 +123,7 @@ router.get('/users', authenticate, requireAdmin, async (req: Request, res: Respo
   }
 });
 
-router.get('/users/:id/payment-logs', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/users/:id/payment-logs', authenticate, requireAdmin, requirePermission('users'), async (req: Request, res: Response) => {
   try {
     const userId = req.params.id as string;
     const page = num(req.query.page, 1);
@@ -133,7 +135,7 @@ router.get('/users/:id/payment-logs', authenticate, requireAdmin, async (req: Re
   }
 });
 
-router.put('/users/:id/toggle-status', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.put('/users/:id/toggle-status', authenticate, requireAdmin, requirePermission('users'), async (req: Request, res: Response) => {
   try {
     const userRef = db.collection(USERS_COLLECTION).doc(req.params.id as string);
     const userDoc = await userRef.get();
@@ -142,6 +144,10 @@ router.put('/users/:id/toggle-status', authenticate, requireAdmin, async (req: R
       return;
     }
     const user = userDoc.data() as User;
+    if (user.role === 'admin' && !hasFullAccess(req.user)) {
+      res.status(403).json({ success: false, message: 'Only full-access admins can activate/deactivate other admins.' });
+      return;
+    }
     await userRef.update({ isActive: !user.isActive });
     
     logAudit(req.user!.userId, 'toggle_user_status', 'users', req.params.id as string, { isActive: !user.isActive }, req);
@@ -152,7 +158,7 @@ router.put('/users/:id/toggle-status', authenticate, requireAdmin, async (req: R
   }
 });
 
-router.put('/users/:id/role', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.put('/users/:id/role', authenticate, requireAdmin, requireFullAccessAdmin, async (req: Request, res: Response) => {
   try {
     const { role } = req.body;
     if (!role || !['admin', 'customer'].includes(role)) {
@@ -194,13 +200,18 @@ router.put('/users/:id/role', authenticate, requireAdmin, async (req: Request, r
   }
 });
 
-router.post('/users/add-admin', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/users/add-admin', authenticate, requireAdmin, requireFullAccessAdmin, async (req: Request, res: Response) => {
   try {
-    const { email, fullName, password } = req.body;
+    const { email, fullName, password, permissions } = req.body;
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       res.status(400).json({ success: false, message: 'A valid email address is required.' });
       return;
     }
+
+    // A sub-admin created here always gets an explicit permissions array
+    // (possibly empty) — only the pre-existing/grandfathered admins have
+    // no `permissions` field and therefore full access.
+    const cleanPermissions = sanitizePermissions(permissions);
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = typeof fullName === 'string' && fullName.trim() ? fullName.trim() : cleanEmail.split('@')[0];
@@ -226,6 +237,7 @@ router.post('/users/add-admin', authenticate, requireAdmin, async (req: Request,
         }
         await userRef.update({
           role: 'admin',
+          permissions: cleanPermissions,
           fullName: cleanName || userData.fullName || cleanEmail.split('@')[0],
           updatedAt: Timestamp.now(),
         });
@@ -236,6 +248,7 @@ router.post('/users/add-admin', authenticate, requireAdmin, async (req: Request,
           email: cleanEmail,
           fullName: cleanName,
           role: 'admin',
+          permissions: cleanPermissions,
           isActive: true,
           pinSetup: false,
           createdAt: Timestamp.now(),
@@ -244,13 +257,13 @@ router.post('/users/add-admin', authenticate, requireAdmin, async (req: Request,
       }
 
       await promoteToAdmin(uid);
-      logAudit(req.user!.userId, 'add_admin_existing', 'users', uid, { email: cleanEmail, role: 'admin' }, req);
+      logAudit(req.user!.userId, 'add_admin_existing', 'users', uid, { email: cleanEmail, role: 'admin', permissions: cleanPermissions }, req);
 
       res.json({
         success: true,
         message: `Existing user ${cleanEmail} promoted to Admin successfully.`,
         isExisting: true,
-        data: { uid, email: cleanEmail, fullName: cleanName, role: 'admin' },
+        data: { uid, email: cleanEmail, fullName: cleanName, role: 'admin', permissions: cleanPermissions },
       });
       return;
     }
@@ -275,6 +288,7 @@ router.post('/users/add-admin', authenticate, requireAdmin, async (req: Request,
       email: cleanEmail,
       fullName: cleanName,
       role: 'admin',
+      permissions: cleanPermissions,
       isActive: true,
       pinSetup: false,
       createdAt: Timestamp.now(),
@@ -292,21 +306,87 @@ router.post('/users/add-admin', authenticate, requireAdmin, async (req: Request,
     });
 
     await promoteToAdmin(newUid);
-    logAudit(req.user!.userId, 'create_new_admin', 'users', newUid, { email: cleanEmail, role: 'admin' }, req);
+    logAudit(req.user!.userId, 'create_new_admin', 'users', newUid, { email: cleanEmail, role: 'admin', permissions: cleanPermissions }, req);
 
     res.json({
       success: true,
       message: `New admin account created successfully for ${cleanEmail}.`,
       isExisting: false,
       temporaryPassword: tempPassword,
-      data: { uid: newUid, email: cleanEmail, fullName: cleanName, role: 'admin', temporaryPassword: tempPassword },
+      data: { uid: newUid, email: cleanEmail, fullName: cleanName, role: 'admin', permissions: cleanPermissions, temporaryPassword: tempPassword },
     });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message || 'Failed to create admin account.' });
   }
 });
 
-router.get('/orders/limbo', authenticate, requireAdmin, async (req: Request, res: Response) => {
+// ─── Sub-admin & permission management (full-access admins only) ──────────
+
+router.get('/permissions', authenticate, requireAdmin, requireFullAccessAdmin, async (_req: Request, res: Response) => {
+  res.json({ success: true, data: ADMIN_PERMISSIONS });
+});
+
+router.get('/users/admins', authenticate, requireAdmin, requireFullAccessAdmin, async (_req: Request, res: Response) => {
+  try {
+    const snapshot = await db.collection(USERS_COLLECTION).where('role', '==', 'admin').get();
+    const admins = snapshot.docs.map((doc) => {
+      const data = doc.data() as User;
+      return {
+        id: doc.id,
+        uid: data.uid,
+        email: data.email,
+        fullName: data.fullName,
+        isActive: data.isActive,
+        fullAccess: data.permissions === undefined || data.permissions === null,
+        permissions: data.permissions ?? [],
+        createdAt: data.createdAt,
+      };
+    });
+    res.json({ success: true, data: admins });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/users/:id/permissions', authenticate, requireAdmin, requireFullAccessAdmin, async (req: Request, res: Response) => {
+  try {
+    const userRef = db.collection(USERS_COLLECTION).doc(req.params.id as string);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+    const user = userDoc.data() as User;
+    if (user.role !== 'admin') {
+      res.status(400).json({ success: false, message: 'User is not an admin' });
+      return;
+    }
+
+    const firebaseUid = user.firebaseUid || userDoc.id;
+    if (firebaseUid === 'admin-super') {
+      res.status(400).json({ success: false, message: 'The superadmin account always has full access.' });
+      return;
+    }
+
+    // `fullAccess: true` clears the permissions field entirely, granting
+    // this admin the same unrestricted access as the grandfathered admins.
+    const grantFullAccess = req.body.fullAccess === true;
+    const cleanPermissions = grantFullAccess ? null : sanitizePermissions(req.body.permissions);
+
+    await userRef.update({
+      permissions: cleanPermissions,
+      updatedAt: Timestamp.now(),
+    });
+
+    logAudit(req.user!.userId, 'update_admin_permissions', 'users', req.params.id as string, { fullAccess: grantFullAccess, permissions: cleanPermissions }, req);
+
+    res.json({ success: true, message: 'Admin permissions updated', data: { fullAccess: grantFullAccess, permissions: cleanPermissions ?? [] } });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/orders/limbo', authenticate, requireAdmin, requirePermission('cash_orders'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
@@ -317,7 +397,7 @@ router.get('/orders/limbo', authenticate, requireAdmin, async (req: Request, res
   }
 });
 
-router.get('/orders/reconciled', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/orders/reconciled', authenticate, requireAdmin, requirePermission('cash_orders'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
@@ -328,7 +408,7 @@ router.get('/orders/reconciled', authenticate, requireAdmin, async (req: Request
   }
 });
 
-router.post('/orders/:orderId/reconcile', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/orders/:orderId/reconcile', authenticate, requireAdmin, requirePermission('cash_orders'), async (req: Request, res: Response) => {
   try {
     const { customerUserId } = req.body;
     if (!customerUserId) {
@@ -345,7 +425,7 @@ router.post('/orders/:orderId/reconcile', authenticate, requireAdmin, async (req
   }
 });
 
-router.delete('/orders/:orderId', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.delete('/orders/:orderId', authenticate, requireAdmin, requirePermission('cash_orders'), async (req: Request, res: Response) => {
   try {
     const { reason, pin } = req.body;
     if (!reason) {
@@ -392,7 +472,7 @@ router.delete('/orders/:orderId', authenticate, requireAdmin, async (req: Reques
   }
 });
 
-router.get('/pin-change-requests', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.get('/pin-change-requests', authenticate, requireAdmin, requirePermission('pin_changes'), async (req: Request, res: Response) => {
   try {
     const status = req.query.status as string | undefined;
     const page = num(req.query.page, 1);
@@ -412,7 +492,7 @@ router.get('/pin-change-requests', authenticate, requireAdmin, async (req: Reque
   }
 });
 
-router.post('/pin-change-requests/:id/approve', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/pin-change-requests/:id/approve', authenticate, requireAdmin, requirePermission('pin_changes'), async (req: Request, res: Response) => {
   try {
     const { pin } = req.body;
     if (!pin) {
@@ -430,7 +510,7 @@ router.post('/pin-change-requests/:id/approve', authenticate, requireAdmin, asyn
   }
 });
 
-router.post('/pin-change-requests/:id/reject', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/pin-change-requests/:id/reject', authenticate, requireAdmin, requirePermission('pin_changes'), async (req: Request, res: Response) => {
   try {
     const { reason } = req.body;
     const result = await authService.rejectPinChangeRequest(req.params.id as string, req.user!.userId, reason);
