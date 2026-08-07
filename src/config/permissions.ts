@@ -5,6 +5,7 @@
 // behavior where every admin could see everything). A user with an explicit
 // `permissions` array is a restricted sub-admin limited to those keys.
 export const ADMIN_PERMISSIONS = [
+  { key: 'dashboard', label: 'Dashboard overview', description: 'Today\'s revenue, profit, orders & wallet snapshot' },
   { key: 'inventory', label: 'Inventory', description: 'Stock levels, thresholds, restocking & categories' },
   { key: 'products', label: 'Add products', description: 'List new items on the menu' },
   { key: 'sales', label: 'Sales logs', description: 'Orders, refunds & daily takings' },

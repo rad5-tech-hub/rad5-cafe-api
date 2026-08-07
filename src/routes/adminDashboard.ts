@@ -224,7 +224,7 @@ router.post('/auth/change-pin', authenticateAdmin, async (req: Request, res: Res
 /**
  * Dashboard Stats Overview
  */
-router.get('/overview', authenticateAdmin, async (req: Request, res: Response) => {
+router.get('/overview', authenticateAdmin, requirePermission('dashboard'), async (req: Request, res: Response) => {
   try {
     const stats = await analyticsService.getDashboardStats();
     res.json({ success: true, data: stats });
