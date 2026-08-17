@@ -390,8 +390,18 @@ router.get('/orders/limbo', authenticate, requireAdmin, requirePermission('cash_
   try {
     const page = num(req.query.page, 1);
     const limit = num(req.query.limit, 20);
-    const result = await orderService.getLimboOrders(page, limit);
+    const enteredBy = str(req.query.enteredBy).trim() || undefined;
+    const result = await orderService.getLimboOrders(page, limit, enteredBy);
     res.json({ success: true, orders: result.orders, total: result.total, page, limit, totalPages: Math.ceil(result.total / limit) });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/orders/limbo/admins', authenticate, requireAdmin, requirePermission('cash_orders'), async (_req: Request, res: Response) => {
+  try {
+    const admins = await orderService.getLimboEnteredByAdmins();
+    res.json({ success: true, admins });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

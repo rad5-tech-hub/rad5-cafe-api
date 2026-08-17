@@ -15,6 +15,15 @@ const TRANSACTIONS_COLLECTION = 'transactions';
 const PRODUCTS_COLLECTION = 'products';
 const STOCK_HISTORY_COLLECTION = 'stock_history';
 
+/** Milliseconds for a Firestore Timestamp, a serialized one, or a date string. */
+const toMillis = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value._seconds === 'number') return value._seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
 export class OrderService {
   async createOrder(
     userId: string,
@@ -479,16 +488,37 @@ export class OrderService {
 
     return { ...order, issued: true, issuedAt: Timestamp.now(), issuedBy: adminUserId };
   }
-  async getLimboOrders(page: number = 1, limit: number = 20): Promise<{ orders: Order[]; total: number }> {
-    const query = db.collection(ORDERS_COLLECTION)
-      .where('reconciliationStatus', '==', 'limbo')
-      .orderBy('createdAt', 'desc');
+  async getLimboOrders(page: number = 1, limit: number = 20, enteredBy?: string): Promise<{ orders: Order[]; total: number }> {
+    let orders: Order[];
+    let total: number;
 
-    const countSnapshot = await query.count().get();
-    const total = countSnapshot.data().count;
+    if (enteredBy) {
+      // Equality-only query: Firestore serves this from single-field indexes, while
+      // adding orderBy('createdAt') alongside the second equality would need a
+      // composite index. A single admin's limbo orders are few, so we sort and
+      // page in memory instead.
+      const snapshot = await db.collection(ORDERS_COLLECTION)
+        .where('reconciliationStatus', '==', 'limbo')
+        .where('enteredBy', '==', enteredBy)
+        .get();
 
-    const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
-    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+      const matched = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Order))
+        .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+      total = matched.length;
+      orders = matched.slice((page - 1) * limit, (page - 1) * limit + limit);
+    } else {
+      const query = db.collection(ORDERS_COLLECTION)
+        .where('reconciliationStatus', '==', 'limbo')
+        .orderBy('createdAt', 'desc');
+
+      const countSnapshot = await query.count().get();
+      total = countSnapshot.data().count;
+
+      const snapshot = await query.offset((page - 1) * limit).limit(limit).get();
+      orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+    }
 
     const userIds = new Set<string>();
     orders.forEach(order => {
@@ -523,6 +553,43 @@ export class OrderService {
     });
 
     return { orders: enhancedOrders, total };
+  }
+
+  /**
+   * The distinct admins who entered the cash orders currently sitting in limbo —
+   * used to populate the "Entered by" filter on the cash orders screens.
+   */
+  async getLimboEnteredByAdmins(): Promise<{ id: string; fullName: string; email: string }[]> {
+    const snapshot = await db.collection(ORDERS_COLLECTION)
+      .where('reconciliationStatus', '==', 'limbo')
+      .select('enteredBy', 'userName')
+      .get();
+
+    const adminIds = new Set<string>();
+    const fallbackNames: Record<string, string> = {};
+    snapshot.docs.forEach(doc => {
+      const data = doc.data() as { enteredBy?: string; userName?: string };
+      if (!data.enteredBy) return;
+      adminIds.add(data.enteredBy);
+      if (data.userName && !fallbackNames[data.enteredBy]) fallbackNames[data.enteredBy] = data.userName;
+    });
+
+    if (adminIds.size === 0) return [];
+
+    const userRefs = Array.from(adminIds).map(id => db.collection(USERS_COLLECTION).doc(id));
+    const userDocs = await db.getAll(...userRefs);
+
+    return userDocs
+      .map(doc => {
+        const data = doc.exists ? (doc.data() as { email?: string; fullName?: string }) : undefined;
+        const email = data?.email || '';
+        return {
+          id: doc.id,
+          fullName: data?.fullName || email.split('@')[0] || fallbackNames[doc.id] || 'Unknown admin',
+          email,
+        };
+      })
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
   }
 
   async getReconciledOrders(page: number = 1, limit: number = 20): Promise<{ orders: any[]; total: number }> {
