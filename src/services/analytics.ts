@@ -12,7 +12,7 @@ const STALE_PENDING_PAYMENT_MINUTES = 30;
 export class AnalyticsService {
   async getDashboardStats(): Promise<{
     today: { revenue: number; profit: number; salesCount: number; rewardsGiven: number; stockBalancedOut: number };
-    inventory: { totalProducts: number; lowStock: number; outOfStock: number };
+    inventory: { totalProducts: number; lowStock: number; outOfStock: number; totalUnits: number; costValue: number; retailValue: number };
     customers: { total: number; active: number };
     wallet: { totalValue: number; totalTransactions: number; unreconciledLimboTotal: number; unreconciledLimboCount: number };
     payments: {
@@ -117,9 +117,16 @@ export class AnalyticsService {
     const totalProducts = products.length;
     let lowStock = 0;
     let outOfStock = 0;
+    let totalUnits = 0;
+    let costValue = 0;
+    let retailValue = 0;
     for (const p of products) {
       if (p.quantity <= 0) outOfStock++;
       else if (p.quantity <= (p.lowStockThreshold || 10)) lowStock++;
+      const qty = p.quantity || 0;
+      totalUnits += qty;
+      costValue += qty * (p.costPrice || 0);
+      retailValue += qty * (p.sellingPrice || 0);
     }
 
     const totalUsers = usersCountSnapshot.data().count;
@@ -159,7 +166,7 @@ export class AnalyticsService {
 
     return {
       today: { revenue: todayRevenue, profit: todayProfit, salesCount, rewardsGiven: todayRewardsGiven, stockBalancedOut: todayStockBalancedOut },
-      inventory: { totalProducts, lowStock, outOfStock },
+      inventory: { totalProducts, lowStock, outOfStock, totalUnits, costValue, retailValue },
       customers: { total: totalUsers, active: activeUsers },
       wallet: { totalValue, totalTransactions, unreconciledLimboTotal, unreconciledLimboCount },
       payments: {
