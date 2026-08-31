@@ -124,8 +124,6 @@ The authentication middleware automatically parses the token:
         "totalTransactions": 612
       },
       "payments": {
-        "paystackBalance": 512340.5,
-        "paystackCurrency": "NGN",
         "onlineTransactionsTotal": 4820000,
         "onlineTransactionsCount": 96,
         "stalePendingPayments": { "count": 2, "oldestMinutes": 94 }
@@ -133,7 +131,50 @@ The authentication middleware automatically parses the token:
     }
   }
   ```
-  `payments.paystackBalance` is the live available balance on the Paystack account (fetched from Paystack's `/balance` endpoint on every call; `null` if the Paystack API is unreachable). `onlineTransactionsTotal` is the lifetime sum of completed wallet-funding transactions recorded via Paystack — compare it against `paystackBalance` to sanity-check that money collected matches what's actually sitting with Paystack (they won't be exactly equal once settlements/fees are factored in, but a wildly divergent gap is a signal). `stalePendingPayments` flags Paystack purchases that were initiated but never finalized (still `pending` after 30 minutes) — the same class of "money taken, wallet never credited" gap as the mocked-checkout incident.
+  `onlineTransactionsTotal`/`onlineTransactionsCount` is the lifetime sum/count of completed wallet-funding transactions recorded via Paystack **in our own ledger**. `stalePendingPayments` flags Paystack purchases that were initiated but never finalized (still `pending` after 30 minutes) — the same class of "money taken, wallet never credited" gap as the mocked-checkout incident. For the true, live Paystack-side total (independent of what did or didn't make it into our ledger), see `GET /paystack/transactions/total` below — that's the number the dashboard actually displays, not a `/balance` call, since Paystack's account balance reflects the *current settlement-account* float (which drains to your bank on their schedule) rather than how much has actually been collected.
+
+#### Get Paystack Transaction Total (sum)
+* **Method**: `GET`
+* **Path**: `/api/admin-dashboard/paystack/transactions/total`
+* **Headers**: `Authorization: Bearer <token>`
+* **Query Parameters**: `status` (default `success`) — pass `all`-equivalent by omitting server-side filtering isn't supported; use a specific Paystack status (`success`, `failed`, `abandoned`, ...) per call.
+* **Description**: Walks every page of Paystack's own transaction list for this account and sums the amounts — the real, lifetime total of money that has moved through Paystack, independent of our internal ledger. Can be slower than other endpoints on accounts with a long transaction history since it pages through Paystack itself.
+* **Success Response (200)**:
+  ```json
+  {
+    "success": true,
+    "data": { "total": 4915250.75, "count": 103 }
+  }
+  ```
+
+#### Get Paystack Transactions (list)
+* **Method**: `GET`
+* **Path**: `/api/admin-dashboard/paystack/transactions`
+* **Headers**: `Authorization: Bearer <token>`
+* **Query Parameters**: `page` (default 1), `perPage` (default 50, max 100), `from`, `to` (ISO dates), `status`
+* **Description**: Paginated, raw list of individual Paystack transactions (reference, amount, fees, status, channel, customer email, timestamps) for browsing/auditing — straight from Paystack, not our ledger.
+* **Success Response (200)**:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": 4021553912,
+        "reference": "RAD5-ABC123",
+        "amount": 5000,
+        "fees": 75,
+        "currency": "NGN",
+        "status": "success",
+        "channel": "card",
+        "customerEmail": "jane@example.com",
+        "gatewayResponse": "Successful",
+        "paidAt": "2026-08-30T09:12:00.000Z",
+        "createdAt": "2026-08-30T09:11:40.000Z"
+      }
+    ],
+    "meta": { "total": 103, "page": 1, "perPage": 50, "pageCount": 3 }
+  }
+  ```
 
 #### Get Recent Activity
 * **Method**: `GET`

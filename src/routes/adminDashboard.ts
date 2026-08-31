@@ -12,6 +12,7 @@ import { requirePermission, requireFullAccessAdmin } from '../middleware/permiss
 import { sanitizePermissions } from '../config/permissions.js';
 import { adminReportsService } from '../services/adminReports.js';
 import { analyticsService } from '../services/analytics.js';
+import { paystackService } from '../services/paystack.js';
 import { categoryService } from '../services/categories.js';
 import { notificationService } from '../services/notifications.js';
 import { orderService } from '../services/orders.js';
@@ -271,6 +272,53 @@ router.get('/recent-activity', authenticateAdmin, requirePermission('dashboard')
     }));
 
     res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * The actual sum of every transaction Paystack has ever recorded on this
+ * account (walks all pages of Paystack's own transaction list) — the real
+ * lifetime total, independent of what did or didn't make it into our own
+ * ledger. Can be slow for accounts with a long history since it pages
+ * through Paystack itself; kept as its own endpoint rather than folded
+ * into /overview.
+ */
+router.get('/paystack/transactions/total', authenticateAdmin, requirePermission('accounting'), async (req: Request, res: Response) => {
+  try {
+    const status = str(req.query.status) || 'success';
+    const result = await paystackService.getTotalTransacted(status);
+    if (!result) {
+      res.status(502).json({ success: false, message: 'Could not reach Paystack — check the configured secret key.' });
+      return;
+    }
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Full Paystack transaction history (every transaction ever recorded on the
+ * Paystack account, not just the ones that ended up in our own ledger) —
+ * used to sanity-check the live balance and plan withdrawals against it.
+ */
+router.get('/paystack/transactions', authenticateAdmin, requirePermission('accounting'), async (req: Request, res: Response) => {
+  try {
+    const page = num(req.query.page, 1);
+    const perPage = num(req.query.perPage, 50);
+    const from = str(req.query.from) || undefined;
+    const to = str(req.query.to) || undefined;
+    const status = str(req.query.status) || undefined;
+
+    const result = await paystackService.listTransactions({ page, perPage, from, to, status });
+    if (!result) {
+      res.status(502).json({ success: false, message: 'Could not reach Paystack — check the configured secret key.' });
+      return;
+    }
+
+    res.json({ success: true, data: result.data, meta: result.meta });
   } catch (error: any) {
     res.status(400).json({ success: false, message: error.message });
   }

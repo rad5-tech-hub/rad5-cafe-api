@@ -1,7 +1,5 @@
 import { db, Timestamp } from '../config/firebase.js';
-import { env } from '../config/env.js';
 import { User, Product, Order, Wallet } from '../types/index.js';
-import { paystackService } from './paystack.js';
 
 const USERS_COLLECTION = 'users';
 const PRODUCTS_COLLECTION = 'products';
@@ -18,8 +16,6 @@ export class AnalyticsService {
     customers: { total: number; active: number };
     wallet: { totalValue: number; totalTransactions: number; unreconciledLimboTotal: number; unreconciledLimboCount: number };
     payments: {
-      paystackBalance: number | null;
-      paystackCurrency: string;
       onlineTransactionsTotal: number;
       onlineTransactionsCount: number;
       stalePendingPayments: { count: number; oldestMinutes: number };
@@ -42,7 +38,6 @@ export class AnalyticsService {
       stockBalanceOutsSnapshot,
       onlineTxnsSnapshot,
       pendingOnlinePaymentsSnapshot,
-      paystackBalance,
     ] = await Promise.all([
       db.collection(ORDERS_COLLECTION)
         .where('createdAt', '>=', todayTimestamp)
@@ -78,7 +73,6 @@ export class AnalyticsService {
       db.collection(PENDING_PURCHASES_COLLECTION)
         .where('status', '==', 'pending')
         .get(),
-      paystackService.getBalance(),
     ]);
 
     const todayOrders = todayOrdersSnapshot.docs.map(d => d.data() as Order & { items?: Array<{ unitPrice: number; costPrice: number; quantity: number }> });
@@ -169,8 +163,6 @@ export class AnalyticsService {
       customers: { total: totalUsers, active: activeUsers },
       wallet: { totalValue, totalTransactions, unreconciledLimboTotal, unreconciledLimboCount },
       payments: {
-        paystackBalance: paystackBalance?.balance ?? null,
-        paystackCurrency: paystackBalance?.currency || env.currency,
         onlineTransactionsTotal,
         onlineTransactionsCount: onlineTxnsSnapshot.size,
         stalePendingPayments: { count: staleCount, oldestMinutes: Math.round(oldestStaleMinutes) },
