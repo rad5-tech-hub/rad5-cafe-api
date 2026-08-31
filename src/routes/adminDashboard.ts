@@ -234,6 +234,49 @@ router.get('/overview', authenticateAdmin, requirePermission('dashboard'), async
 });
 
 /**
+ * Platform-wide recent activity feed (latest transactions across all customers)
+ */
+router.get('/recent-activity', authenticateAdmin, requirePermission('dashboard'), async (req: Request, res: Response) => {
+  try {
+    const limitN = Math.min(num(req.query.limit, 20), 50);
+
+    const snapshot = await db.collection('transactions')
+      .orderBy('createdAt', 'desc')
+      .limit(limitN)
+      .get();
+
+    const txns = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction & { id: string }));
+
+    const userIds = Array.from(new Set(txns.map(t => t.userId).filter(Boolean)));
+    const userDocs = userIds.length
+      ? await db.getAll(...userIds.map(id => db.collection('users').doc(id)))
+      : [];
+    const nameById = new Map<string, string>();
+    for (const doc of userDocs) {
+      if (doc.exists) {
+        const u = doc.data() as User;
+        nameById.set(doc.id, u.fullName || u.email || doc.id);
+      }
+    }
+
+    const data = txns.map(t => ({
+      id: t.id,
+      type: t.type,
+      amount: t.amount,
+      status: t.status,
+      description: t.description,
+      metadata: t.metadata,
+      createdAt: t.createdAt?.toDate ? t.createdAt.toDate().toISOString() : t.createdAt,
+      actorName: nameById.get(t.userId) || 'Unknown customer',
+    }));
+
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * Rewards History
  */
 router.get('/rewards', authenticateAdmin, requirePermission('rewards'), async (req: Request, res: Response) => {

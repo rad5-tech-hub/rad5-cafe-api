@@ -1,11 +1,15 @@
 import { db, Timestamp } from '../config/firebase.js';
+import { env } from '../config/env.js';
 import { User, Product, Order, Wallet } from '../types/index.js';
+import { paystackService } from './paystack.js';
 
 const USERS_COLLECTION = 'users';
 const PRODUCTS_COLLECTION = 'products';
 const ORDERS_COLLECTION = 'orders';
 const TRANSACTIONS_COLLECTION = 'transactions';
 const WALLETS_COLLECTION = 'wallets';
+const PENDING_PURCHASES_COLLECTION = 'pendingTokenPurchases';
+const STALE_PENDING_PAYMENT_MINUTES = 30;
 
 export class AnalyticsService {
   async getDashboardStats(): Promise<{
@@ -13,6 +17,12 @@ export class AnalyticsService {
     inventory: { totalProducts: number; lowStock: number; outOfStock: number };
     customers: { total: number; active: number };
     wallet: { totalValue: number; totalTransactions: number; unreconciledLimboTotal: number; unreconciledLimboCount: number };
+    payments: {
+      paystackBalance: number | null;
+      paystackCurrency: string;
+      onlineTransactionsTotal: number;
+      stalePendingPayments: { count: number; oldestMinutes: number };
+    };
   }> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -29,6 +39,9 @@ export class AnalyticsService {
       limboOrdersSnapshot,
       rewardsSnapshot,
       stockBalanceOutsSnapshot,
+      onlineTxnsSnapshot,
+      pendingOnlinePaymentsSnapshot,
+      paystackBalance,
     ] = await Promise.all([
       db.collection(ORDERS_COLLECTION)
         .where('createdAt', '>=', todayTimestamp)
@@ -56,6 +69,15 @@ export class AnalyticsService {
       db.collection('stock_balance_outs')
         .where('createdAt', '>=', todayTimestamp)
         .get(),
+      db.collection(TRANSACTIONS_COLLECTION)
+        .where('type', '==', 'funding')
+        .where('paymentMethod', '==', 'paystack')
+        .where('status', '==', 'completed')
+        .get(),
+      db.collection(PENDING_PURCHASES_COLLECTION)
+        .where('status', '==', 'pending')
+        .get(),
+      paystackService.getBalance(),
     ]);
 
     const todayOrders = todayOrdersSnapshot.docs.map(d => d.data() as Order & { items?: Array<{ unitPrice: number; costPrice: number; quantity: number }> });
@@ -123,11 +145,34 @@ export class AnalyticsService {
     }
     const unreconciledLimboCount = limboOrders.length;
 
+    let onlineTransactionsTotal = 0;
+    for (const doc of onlineTxnsSnapshot.docs) {
+      onlineTransactionsTotal += doc.data().amount || 0;
+    }
+
+    const now = Date.now();
+    let oldestStaleMinutes = 0;
+    let staleCount = 0;
+    for (const doc of pendingOnlinePaymentsSnapshot.docs) {
+      const createdAt = doc.data().createdAt as FirebaseFirestore.Timestamp | undefined;
+      const ageMinutes = createdAt ? (now - createdAt.toMillis()) / 60000 : 0;
+      if (ageMinutes >= STALE_PENDING_PAYMENT_MINUTES) {
+        staleCount++;
+        if (ageMinutes > oldestStaleMinutes) oldestStaleMinutes = ageMinutes;
+      }
+    }
+
     return {
       today: { revenue: todayRevenue, profit: todayProfit, salesCount, rewardsGiven: todayRewardsGiven, stockBalancedOut: todayStockBalancedOut },
       inventory: { totalProducts, lowStock, outOfStock },
       customers: { total: totalUsers, active: activeUsers },
       wallet: { totalValue, totalTransactions, unreconciledLimboTotal, unreconciledLimboCount },
+      payments: {
+        paystackBalance: paystackBalance?.balance ?? null,
+        paystackCurrency: paystackBalance?.currency || env.currency,
+        onlineTransactionsTotal,
+        stalePendingPayments: { count: staleCount, oldestMinutes: Math.round(oldestStaleMinutes) },
+      },
     };
   }
 

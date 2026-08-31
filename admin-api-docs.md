@@ -122,8 +122,40 @@ The authentication middleware automatically parses the token:
       "wallet": {
         "totalValue": 450000,
         "totalTransactions": 612
+      },
+      "payments": {
+        "paystackBalance": 512340.5,
+        "paystackCurrency": "NGN",
+        "onlineTransactionsTotal": 4820000,
+        "stalePendingPayments": { "count": 2, "oldestMinutes": 94 }
       }
     }
+  }
+  ```
+  `payments.paystackBalance` is the live available balance on the Paystack account (fetched from Paystack's `/balance` endpoint on every call; `null` if the Paystack API is unreachable). `onlineTransactionsTotal` is the lifetime sum of completed wallet-funding transactions recorded via Paystack — compare it against `paystackBalance` to sanity-check that money collected matches what's actually sitting with Paystack (they won't be exactly equal once settlements/fees are factored in, but a wildly divergent gap is a signal). `stalePendingPayments` flags Paystack purchases that were initiated but never finalized (still `pending` after 30 minutes) — the same class of "money taken, wallet never credited" gap as the mocked-checkout incident.
+
+#### Get Recent Activity
+* **Method**: `GET`
+* **Path**: `/api/admin-dashboard/recent-activity`
+* **Headers**: `Authorization: Bearer <token>`
+* **Query Parameters**: `limit` (default 20, max 50)
+* **Description**: Platform-wide feed of the most recent transactions (fundings, purchases, transfers, rewards) across all customers, each annotated with the customer's display name.
+* **Success Response (200)**:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "TXN123",
+        "type": "funding",
+        "amount": 5000,
+        "status": "completed",
+        "description": "Wallet funding via Paystack — 5,000 NGN",
+        "metadata": { "paystackReference": "RAD5-ABC123" },
+        "createdAt": "2026-08-31T10:15:00.000Z",
+        "actorName": "Jane Doe"
+      }
+    ]
   }
   ```
 
