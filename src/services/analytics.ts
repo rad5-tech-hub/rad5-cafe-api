@@ -21,6 +21,7 @@ export class AnalyticsService {
       paystackBalance: number | null;
       paystackCurrency: string;
       onlineTransactionsTotal: number;
+      onlineTransactionsCount: number;
       stalePendingPayments: { count: number; oldestMinutes: number };
     };
   }> {
@@ -171,6 +172,7 @@ export class AnalyticsService {
         paystackBalance: paystackBalance?.balance ?? null,
         paystackCurrency: paystackBalance?.currency || env.currency,
         onlineTransactionsTotal,
+        onlineTransactionsCount: onlineTxnsSnapshot.size,
         stalePendingPayments: { count: staleCount, oldestMinutes: Math.round(oldestStaleMinutes) },
       },
     };

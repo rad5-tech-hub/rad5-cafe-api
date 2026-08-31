@@ -127,6 +127,7 @@ The authentication middleware automatically parses the token:
         "paystackBalance": 512340.5,
         "paystackCurrency": "NGN",
         "onlineTransactionsTotal": 4820000,
+        "onlineTransactionsCount": 96,
         "stalePendingPayments": { "count": 2, "oldestMinutes": 94 }
       }
     }
