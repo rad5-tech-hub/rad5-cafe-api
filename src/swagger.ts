@@ -1524,6 +1524,30 @@ const options: swaggerJsdoc.Options = {
           },
         },
       },
+      '/admin-dashboard/paystack/balance': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Money currently sitting in the Paystack account (withdrawable balance)',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Live Paystack balance per currency', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+            502: { description: 'Could not reach Paystack' },
+          },
+        },
+      },
+      '/admin-dashboard/inventory/restock-spend': {
+        get: {
+          tags: ['Admin Dashboard'],
+          summary: 'Restock spend for today, 7d, 30d and all-time, plus recent stock-ins',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'recentLimit', in: 'query', schema: { type: 'integer', default: 8 } },
+          ],
+          responses: {
+            200: { description: 'Restock spend summary', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          },
+        },
+      },
       '/admin-dashboard/inventory-tracking': {
         get: {
           tags: ['Admin Dashboard'],

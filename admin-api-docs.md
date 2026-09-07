@@ -131,7 +131,25 @@ The authentication middleware automatically parses the token:
     }
   }
   ```
-  `onlineTransactionsTotal`/`onlineTransactionsCount` is the lifetime sum/count of completed wallet-funding transactions recorded via Paystack **in our own ledger**. `stalePendingPayments` flags Paystack purchases that were initiated but never finalized (still `pending` after 30 minutes) — the same class of "money taken, wallet never credited" gap as the mocked-checkout incident. For the true, live Paystack-side total (independent of what did or didn't make it into our ledger), see `GET /paystack/transactions/total` below — that's the number the dashboard actually displays, not a `/balance` call, since Paystack's account balance reflects the *current settlement-account* float (which drains to your bank on their schedule) rather than how much has actually been collected.
+  `onlineTransactionsTotal`/`onlineTransactionsCount` is the lifetime sum/count of completed wallet-funding transactions recorded via Paystack **in our own ledger**. `stalePendingPayments` flags Paystack purchases that were initiated but never finalized (still `pending` after 30 minutes) — the same class of "money taken, wallet never credited" gap as the mocked-checkout incident. For the true, live Paystack-side numbers (independent of what did or didn't make it into our ledger), see the two Paystack endpoints below. They answer different questions and the dashboard shows both: `GET /paystack/balance` is the money sitting in the account right now (the settlement float, which drains to your bank on Paystack's schedule) — the headline "Money in Paystack" figure; `GET /paystack/transactions/total` is everything ever collected, before fees and payouts.
+
+#### Get Paystack Balance
+* **Method**: `GET`
+* **Path**: `/api/admin-dashboard/paystack/balance`
+* **Headers**: `Authorization: Bearer <token>`
+* **Permission**: `accounting`
+* **Description**: Money currently sitting in the Paystack account — Paystack's own `/balance`, converted out of kobo. This is the withdrawable settlement balance, *not* lifetime takings; see `/paystack/transactions/total` for that. `primary` is the NGN balance where present, otherwise the first currency returned.
+* **Success Response (200)**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "balances": [{ "currency": "NGN", "balance": 184250.5 }],
+      "primary": { "currency": "NGN", "balance": 184250.5 }
+    }
+  }
+  ```
+* **Error (502)**: `{ "success": false, "message": "Could not reach Paystack — check the configured secret key." }`
 
 #### Get Paystack Transaction Total (sum)
 * **Method**: `GET`
@@ -266,6 +284,40 @@ The authentication middleware automatically parses the token:
     "success": true,
     "message": "Product restocked successfully",
     "data": { ... }
+  }
+  ```
+
+#### Restock Spend
+* **Method**: `GET`
+* **Path**: `/api/admin-dashboard/inventory/restock-spend`
+* **Headers**: `Authorization: Bearer <token>`
+* **Permission**: `inventory`
+* **Query Parameters**: `recentLimit` (default 8) — how many recent stock-ins to return.
+* **Description**: How much money has gone *into* stock. Sums `quantity * unit cost` over `stock_history` rows of type `added` (each restock stamps the cost price actually paid) for today, the last 7 and 30 days, and all-time. Mis-entry corrections (`removed` rows, which also walk `totalAdded` back down) are netted off the amounts but are not counted as stock-in events and do not appear in `recent`.
+
+  `openingStock` is stock a product carries that no dated `added` row accounts for — products used to be created with an opening quantity without writing any stock-history row, so that money was spent but is undated. It is valued at the product's *current* cost price, so it is an estimate. `totalStockAcquisitionCost` is `allTime.amount + openingStock`: everything ever spent putting stock on the shelf, as far as the data can tell, and the figure the dashboard shows as "Spent on restock".
+* **Success Response (200)**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "today": { "amount": 45000, "events": 2 },
+      "last7Days": { "amount": 182000, "events": 7 },
+      "last30Days": { "amount": 640500, "events": 23 },
+      "allTime": { "amount": 2894000, "events": 118 },
+      "openingStock": 96000,
+      "totalStockAcquisitionCost": 2990000,
+      "recent": [
+        {
+          "productId": "PROD987",
+          "productName": "Iced Vanilla Latte",
+          "quantity": 30,
+          "unitCost": 1200,
+          "amount": 36000,
+          "at": "2026-09-07T08:14:02.000Z"
+        }
+      ]
+    }
   }
   ```
 

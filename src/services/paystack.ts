@@ -3,6 +3,40 @@ import { env } from '../config/env.js';
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
 export const paystackService = {
+  /**
+   * The money actually sitting in the Paystack account right now — Paystack's
+   * own /balance figure, per currency, converted out of kobo. This is the
+   * settlement balance (what could be withdrawn today), which is a different
+   * number from getTotalTransacted() (everything ever collected, before fees
+   * and payouts). The dashboard shows both, because staff ask both questions.
+   */
+  async getBalance(): Promise<{
+    balances: Array<{ currency: string; balance: number }>;
+    primary: { currency: string; balance: number } | null;
+  } | null> {
+    if (!env.paystack.secretKey) return null;
+    try {
+      const response = await fetch(`${PAYSTACK_BASE}/balance`, {
+        headers: { Authorization: `Bearer ${env.paystack.secretKey}` },
+      });
+      const result = (await response.json()) as {
+        status: boolean;
+        data?: Array<{ currency: string; balance: number }>;
+      };
+      if (!result.status || !Array.isArray(result.data)) return null;
+
+      const balances = result.data.map((b) => ({
+        currency: b.currency || 'NGN',
+        balance: (b.balance || 0) / 100,
+      }));
+      const primary = balances.find((b) => b.currency === 'NGN') ?? balances[0] ?? null;
+
+      return { balances, primary };
+    } catch {
+      return null;
+    }
+  },
+
   /** Paginated list of every transaction Paystack has ever recorded for this account. */
   async listTransactions(opts: {
     page?: number;
