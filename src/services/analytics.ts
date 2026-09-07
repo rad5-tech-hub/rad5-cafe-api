@@ -1,5 +1,5 @@
 import { db, Timestamp } from '../config/firebase.js';
-import { User, Product, Order, Wallet } from '../types/index.js';
+import { User, Product, Order, Wallet, StockHistory } from '../types/index.js';
 
 const USERS_COLLECTION = 'users';
 const PRODUCTS_COLLECTION = 'products';
@@ -7,6 +7,7 @@ const ORDERS_COLLECTION = 'orders';
 const TRANSACTIONS_COLLECTION = 'transactions';
 const WALLETS_COLLECTION = 'wallets';
 const PENDING_PURCHASES_COLLECTION = 'pendingTokenPurchases';
+const STOCK_HISTORY_COLLECTION = 'stock_history';
 const STALE_PENDING_PAYMENT_MINUTES = 30;
 
 export class AnalyticsService {
@@ -174,6 +175,129 @@ export class AnalyticsService {
         onlineTransactionsCount: onlineTxnsSnapshot.size,
         stalePendingPayments: { count: staleCount, oldestMinutes: Math.round(oldestStaleMinutes) },
       },
+    };
+  }
+
+  /**
+   * How much money has gone *into* stock — i.e. restocking spend.
+   *
+   * Every restock writes a `stock_history` row of type 'added' carrying the
+   * quantity and the cost price in force at that moment, so spend for a period
+   * is just quantity x unit cost over the rows in that window.
+   *
+   * Mis-entry corrections (a 'removed' row, which also walks `totalAdded`
+   * back down) are netted off the amounts — that stock was never really
+   * bought — but they are not counted as stock-in events and do not appear in
+   * `recent`, which lists actual restocks.
+   *
+   * Two things are deliberately kept separate in the result:
+   *  - `today`/`last7Days`/`last30Days`/`allTime` — spend that has a real,
+   *    dated 'added' row behind it.
+   *  - `openingStock` — stock a product carries that no 'added' row accounts
+   *    for. Products used to be created with an opening quantity without
+   *    writing any stock-history row, so that money was spent but is undated.
+   *    It is valued at the product's current cost price, which is an estimate.
+   *
+   * `totalStockAcquisitionCost` is the two added together: everything ever
+   * spent putting stock on the shelf, as far as the data can tell.
+   */
+  async getRestockSpend(recentLimit: number = 8): Promise<{
+    today: { amount: number; events: number };
+    last7Days: { amount: number; events: number };
+    last30Days: { amount: number; events: number };
+    allTime: { amount: number; events: number };
+    openingStock: number;
+    totalStockAcquisitionCost: number;
+    recent: Array<{ productId: string; productName: string; quantity: number; unitCost: number; amount: number; at: string }>;
+  }> {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const start7 = new Date(startOfToday.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const start30 = new Date(startOfToday.getTime() - 29 * 24 * 60 * 60 * 1000);
+
+    const [historySnapshot, productsSnapshot] = await Promise.all([
+      db.collection(STOCK_HISTORY_COLLECTION).where('type', 'in', ['added', 'removed']).get(),
+      db.collection(PRODUCTS_COLLECTION).get(),
+    ]);
+
+    const productMap = new Map<string, Product>();
+    for (const doc of productsSnapshot.docs) {
+      productMap.set(doc.id, doc.data() as Product);
+    }
+
+    const today = { amount: 0, events: 0 };
+    const last7Days = { amount: 0, events: 0 };
+    const last30Days = { amount: 0, events: 0 };
+    const allTime = { amount: 0, events: 0 };
+
+    const loggedAddedByProduct = new Map<string, number>();
+    const events: Array<{ productId: string; productName: string; quantity: number; unitCost: number; amount: number; at: Date }> = [];
+
+    for (const doc of historySnapshot.docs) {
+      const entry = doc.data() as StockHistory;
+      const product = productMap.get(entry.productId);
+      const isCorrection = entry.type === 'removed';
+      const signedQuantity = (entry.quantity || 0) * (isCorrection ? -1 : 1);
+      // Older rows only stored costPrice when the restock changed it; fall back
+      // to what the product costs now so those restocks still count.
+      const unitCost = entry.costPrice ?? product?.costPrice ?? 0;
+      const amount = signedQuantity * unitCost;
+      const at = entry.createdAt ? entry.createdAt.toDate() : new Date(0);
+
+      loggedAddedByProduct.set(entry.productId, (loggedAddedByProduct.get(entry.productId) || 0) + signedQuantity);
+
+      allTime.amount += amount;
+      if (!isCorrection) allTime.events++;
+      if (at >= start30) {
+        last30Days.amount += amount;
+        if (!isCorrection) last30Days.events++;
+      }
+      if (at >= start7) {
+        last7Days.amount += amount;
+        if (!isCorrection) last7Days.events++;
+      }
+      if (at >= startOfToday) {
+        today.amount += amount;
+        if (!isCorrection) today.events++;
+      }
+
+      if (!isCorrection) {
+        events.push({
+          productId: entry.productId,
+          productName: product?.name || 'Deleted product',
+          quantity: signedQuantity,
+          unitCost,
+          amount,
+          at,
+        });
+      }
+    }
+
+    let openingStock = 0;
+    for (const [id, product] of productMap) {
+      const logged = loggedAddedByProduct.get(id) || 0;
+      const unlogged = Math.max(0, (product.totalAdded || 0) - logged);
+      openingStock += unlogged * (product.costPrice || 0);
+    }
+
+    events.sort((a, b) => b.at.getTime() - a.at.getTime());
+    const recent = events.slice(0, recentLimit).map((e) => ({
+      productId: e.productId,
+      productName: e.productName,
+      quantity: e.quantity,
+      unitCost: e.unitCost,
+      amount: e.amount,
+      at: e.at.toISOString(),
+    }));
+
+    return {
+      today,
+      last7Days,
+      last30Days,
+      allTime,
+      openingStock,
+      totalStockAcquisitionCost: allTime.amount + openingStock,
+      recent,
     };
   }
 

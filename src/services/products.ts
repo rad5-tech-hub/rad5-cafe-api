@@ -38,6 +38,20 @@ export class ProductService {
     };
 
     await ref.set(productData);
+
+    if (data.quantity > 0) {
+      await db.collection(STOCK_HISTORY_COLLECTION).add({
+        productId: ref.id,
+        type: 'added',
+        quantity: data.quantity,
+        costPrice: data.costPrice,
+        previousStock: 0,
+        newStock: data.quantity,
+        reference: `INITIAL-${Date.now()}`,
+        createdAt: Timestamp.now(),
+      } as unknown as Partial<StockHistory>);
+    }
+
     return { id: ref.id, ...productData } as unknown as Product;
   }
 
@@ -162,11 +176,12 @@ export class ProductService {
       previousStock: oldStock,
       newStock: oldStock + quantity,
       reference: `RESTOCK-${Date.now()}`,
+      // Always stamp the unit cost actually paid — restock spend on the admin
+      // dashboard is summed straight off these rows, so a row without a cost
+      // price is a restock whose spend can only ever be estimated.
+      costPrice: newCostPrice && newCostPrice > 0 ? newCostPrice : product.costPrice,
       createdAt: Timestamp.now(),
     };
-    if (newCostPrice !== undefined) {
-      historyEntry.costPrice = newCostPrice;
-    }
     await db.collection(STOCK_HISTORY_COLLECTION).add(historyEntry as unknown as Partial<StockHistory>);
     
     // Notification for restock

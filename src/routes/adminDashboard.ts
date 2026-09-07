@@ -278,6 +278,25 @@ router.get('/recent-activity', authenticateAdmin, requirePermission('dashboard')
 });
 
 /**
+ * Money currently sitting in the Paystack account (Paystack's own /balance).
+ * This is the withdrawable settlement balance — not the same figure as
+ * /paystack/transactions/total, which is everything ever collected before
+ * fees and payouts.
+ */
+router.get('/paystack/balance', authenticateAdmin, requirePermission('accounting'), async (_req: Request, res: Response) => {
+  try {
+    const result = await paystackService.getBalance();
+    if (!result) {
+      res.status(502).json({ success: false, message: 'Could not reach Paystack — check the configured secret key.' });
+      return;
+    }
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * The actual sum of every transaction Paystack has ever recorded on this
  * account (walks all pages of Paystack's own transaction list) — the real
  * lifetime total, independent of what did or didn't make it into our own
@@ -436,6 +455,21 @@ router.post('/products/:id/remove-stock', authenticateAdmin, requirePermission('
 /**
  * Inventory Tracking List
  */
+/**
+ * Restock spend — how much money has been put into stock, for today, the last
+ * 7/30 days and all-time, plus the most recent stock-ins. Scans stock_history,
+ * so it is kept out of /overview.
+ */
+router.get('/inventory/restock-spend', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
+  try {
+    const recentLimit = num(req.query.recentLimit, 8);
+    const data = await analyticsService.getRestockSpend(recentLimit);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
 router.get('/inventory-tracking', authenticateAdmin, requirePermission('inventory'), async (req: Request, res: Response) => {
   try {
     const page = num(req.query.page, 1);
