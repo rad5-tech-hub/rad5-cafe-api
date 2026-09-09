@@ -298,16 +298,17 @@ router.get('/paystack/balance', authenticateAdmin, requirePermission('accounting
 
 /**
  * The actual sum of every transaction Paystack has ever recorded on this
- * account (walks all pages of Paystack's own transaction list) — the real
- * lifetime total, independent of what did or didn't make it into our own
- * ledger. Can be slow for accounts with a long history since it pages
- * through Paystack itself; kept as its own endpoint rather than folded
- * into /overview.
+ * account — the real lifetime total of all money transferred into the
+ * Paystack account, computed efficiently via Paystack's /transaction/totals API.
+ * Supports optional date filtering (?from=...&to=...).
  */
 router.get('/paystack/transactions/total', authenticateAdmin, requirePermission('accounting'), async (req: Request, res: Response) => {
   try {
     const status = str(req.query.status) || 'success';
-    const result = await paystackService.getTotalTransacted(status);
+    const from = str(req.query.from) || undefined;
+    const to = str(req.query.to) || undefined;
+
+    const result = await paystackService.getTotalTransacted({ status, from, to });
     if (!result) {
       res.status(502).json({ success: false, message: 'Could not reach Paystack — check the configured secret key.' });
       return;

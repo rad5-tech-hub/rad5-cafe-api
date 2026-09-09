@@ -1,4 +1,4 @@
-import { db, Timestamp } from '../config/firebase.js';
+import { db, Timestamp, AggregateField } from '../config/firebase.js';
 import { User, Product, Order, Wallet, StockHistory } from '../types/index.js';
 
 const USERS_COLLECTION = 'users';
@@ -51,7 +51,9 @@ export class AnalyticsService {
         .where('isActive', '==', true)
         .count()
         .get(),
-      db.collection(WALLETS_COLLECTION).get(),
+      db.collection(WALLETS_COLLECTION)
+        .aggregate({ totalBalance: AggregateField.sum('balance') })
+        .get(),
       db.collection(TRANSACTIONS_COLLECTION).count().get(),
       db.collection('expenses')
         .where('date', '>=', todayTimestamp)
@@ -67,9 +69,12 @@ export class AnalyticsService {
         .where('createdAt', '>=', todayTimestamp)
         .get(),
       db.collection(TRANSACTIONS_COLLECTION)
-        .where('type', '==', 'funding')
         .where('paymentMethod', '==', 'paystack')
         .where('status', '==', 'completed')
+        .aggregate({
+          totalAmount: AggregateField.sum('amount'),
+          count: AggregateField.count(),
+        })
         .get(),
       db.collection(PENDING_PURCHASES_COLLECTION)
         .where('status', '==', 'pending')
@@ -133,11 +138,8 @@ export class AnalyticsService {
     const totalUsers = usersCountSnapshot.data().count;
     const activeUsers = activeUsersCountSnapshot.data().count;
 
-    const wallets = walletsSnapshot.docs.map(d => d.data() as Wallet);
-    let totalValue = 0;
-    for (const w of wallets) {
-      totalValue += w.balance || 0;
-    }
+    const walletData = walletsSnapshot.data();
+    const totalValue = Math.round(((walletData.totalBalance || 0) + Number.EPSILON) * 100) / 100;
 
     const totalTransactions = txnsCountSnapshot.data().count;
 
@@ -148,10 +150,9 @@ export class AnalyticsService {
     }
     const unreconciledLimboCount = limboOrders.length;
 
-    let onlineTransactionsTotal = 0;
-    for (const doc of onlineTxnsSnapshot.docs) {
-      onlineTransactionsTotal += doc.data().amount || 0;
-    }
+    const onlineTxnsData = onlineTxnsSnapshot.data();
+    const onlineTransactionsTotal = Math.round(((onlineTxnsData.totalAmount || 0) + Number.EPSILON) * 100) / 100;
+    const onlineTransactionsCount = onlineTxnsData.count || 0;
 
     const now = Date.now();
     let oldestStaleMinutes = 0;
@@ -172,7 +173,7 @@ export class AnalyticsService {
       wallet: { totalValue, totalTransactions, unreconciledLimboTotal, unreconciledLimboCount },
       payments: {
         onlineTransactionsTotal,
-        onlineTransactionsCount: onlineTxnsSnapshot.size,
+        onlineTransactionsCount,
         stalePendingPayments: { count: staleCount, oldestMinutes: Math.round(oldestStaleMinutes) },
       },
     };

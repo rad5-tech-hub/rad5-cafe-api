@@ -102,13 +102,83 @@ export const paystackService = {
   },
 
   /**
-   * Walks every page of Paystack's own transaction history and adds up the
-   * amounts — the actual sum of everything that has ever moved through this
-   * Paystack account, straight from Paystack (not our internal ledger).
-   * Defaults to 'success' so the total reflects real money only.
+   * Efficiently computes the cumulative total of all transactions processed
+   * through Paystack.
+   *
+   * By default, it queries Paystack's official GET /transaction/totals endpoint,
+   * which computes the total on Paystack's servers in a single O(1) HTTP request
+   * without iterating over pages or incurring rate limits.
+   *
+   * Converts currency amounts out of subunits (kobo) to primary currency units.
+   * Supports optional date filtering (from, to). Falls back to paginated
+   * /transaction query if requested for custom status or as a fallback.
    */
-  async getTotalTransacted(status: string = 'success'): Promise<{ total: number; count: number } | null> {
+  async getTotalTransacted(
+    opts:
+      | {
+          status?: string;
+          from?: string;
+          to?: string;
+        }
+      | string = 'success'
+  ): Promise<{
+    total: number;
+    count: number;
+    totalVolumeByCurrency?: Array<{ currency: string; amount: number }>;
+    pendingTransfers?: number;
+  } | null> {
     if (!env.paystack.secretKey) return null;
+
+    const options = typeof opts === 'string' ? { status: opts } : (opts || {});
+    const status = options.status || 'success';
+    const from = options.from;
+    const to = options.to;
+
+    // 1. Fast Path: Use Paystack's dedicated /transaction/totals endpoint for 'success' status
+    if (status === 'success') {
+      try {
+        const params = new URLSearchParams();
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        const queryStr = params.toString();
+
+        const response = await fetch(`${PAYSTACK_BASE}/transaction/totals${queryStr ? `?${queryStr}` : ''}`, {
+          headers: { Authorization: `Bearer ${env.paystack.secretKey}` },
+        });
+        const result = (await response.json()) as {
+          status: boolean;
+          data?: {
+            total_volume?: number;
+            total_transactions?: number;
+            pending_transfers?: number;
+            total_volume_by_currency?: Array<{ currency: string; amount: number }>;
+          };
+        };
+
+        if (result.status && result.data) {
+          const totalVolumeByCurrency = (result.data.total_volume_by_currency || []).map((c) => ({
+            currency: c.currency || 'NGN',
+            amount: (c.amount || 0) / 100,
+          }));
+
+          const primaryEntry = totalVolumeByCurrency.find((c) => c.currency === 'NGN');
+          const total = primaryEntry ? primaryEntry.amount : (result.data.total_volume || 0) / 100;
+          const count = result.data.total_transactions || 0;
+          const pendingTransfers = (result.data.pending_transfers || 0) / 100;
+
+          return {
+            total: Math.round((total + Number.EPSILON) * 100) / 100,
+            count,
+            totalVolumeByCurrency,
+            pendingTransfers,
+          };
+        }
+      } catch {
+        // Fallback to paginated scan below if /transaction/totals endpoint fails
+      }
+    }
+
+    // 2. Fallback Path: Page through /transaction for custom status or fallback
     try {
       let page = 1;
       let pageCount = 1;
@@ -118,6 +188,9 @@ export const paystackService = {
 
       do {
         const params = new URLSearchParams({ page: String(page), perPage: String(perPage), status });
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+
         const response = await fetch(`${PAYSTACK_BASE}/transaction?${params.toString()}`, {
           headers: { Authorization: `Bearer ${env.paystack.secretKey}` },
         });
@@ -136,7 +209,7 @@ export const paystackService = {
         page++;
       } while (page <= pageCount);
 
-      return { total, count };
+      return { total: Math.round((total + Number.EPSILON) * 100) / 100, count };
     } catch {
       return null;
     }

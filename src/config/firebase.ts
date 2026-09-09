@@ -44,5 +44,6 @@ export const auth = admin.auth(app);
 export const storage = admin.storage(app);
 export const FieldValue = admin.firestore.FieldValue;
 export const Timestamp = admin.firestore.Timestamp;
+export const AggregateField = admin.firestore.AggregateField;
 
 export default admin;
